@@ -25,10 +25,11 @@ function generateDeterministicId(
   titulo: string,
   descricao: string,
   banco: string,
+  occurrence: number = 0,
 ): string {
   const text = normalizeText(titulo + ' ' + descricao);
   const valorStr = valor.toFixed(2);
-  const payload = `${data}|${valorStr}|${text}|${banco}`;
+  const payload = `${data}|${valorStr}|${text}|${banco}|${occurrence}`;
   return createHash('sha256').update(payload).digest('hex').substring(0, 16);
 }
 
@@ -122,6 +123,8 @@ export function parseC6Csv(csvContent: string): {
   if (errors.length > 0) return { transactions, errors };
 
   // Parse data rows
+  const occurrenceMap = new Map<string, number>();
+
   for (let i = 1; i < records.length; i++) {
     const row = records[i];
     if (!row || row.length < 5) continue;
@@ -158,12 +161,20 @@ export function parseC6Csv(csvContent: string): {
       const [dd, mm, yyyy] = dateParts;
       const isoDate = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
 
+      // Track occurrence count for duplicate payloads
+      const text = normalizeText(titulo + ' ' + descricao);
+      const valorStr = valor.toFixed(2);
+      const baseKey = `${dataLancStr}|${valorStr}|${text}|C6`;
+      const occurrence = occurrenceMap.get(baseKey) || 0;
+      occurrenceMap.set(baseKey, occurrence + 1);
+
       const id = generateDeterministicId(
         dataLancStr,
         valor,
         titulo,
         descricao,
         'C6',
+        occurrence,
       );
 
       transactions.push({

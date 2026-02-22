@@ -70,9 +70,21 @@ export class ImportService {
       return tx;
     });
 
-    // 4. Insert
-    if (classifiedTransactions.length > 0) {
-      await this.txRepo.save(classifiedTransactions, { chunk: 500 });
+    // 4. Insert (using individual inserts to handle any remaining conflicts gracefully)
+    let insertedCount = 0;
+    for (const tx of classifiedTransactions) {
+      try {
+        await this.txRepo
+          .createQueryBuilder()
+          .insert()
+          .into(Transaction)
+          .values(tx)
+          .orIgnore()
+          .execute();
+        insertedCount++;
+      } catch {
+        // Skip this transaction if it still fails
+      }
     }
 
     // 5. Create import log
