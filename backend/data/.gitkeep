@@ -1,0 +1,3 @@
+# App Financeiro — Data Directory
+# SQLite database will be created here automatically.
+# This directory is volume-mounted in Docker.
