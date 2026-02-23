@@ -21,13 +21,15 @@ export class TransactionsController {
     @Query('subcategoria') subcategoria?: string,
     @Query('banco') banco?: string,
     @Query('busca') busca?: string,
-    @Query('valorMin') valorMin?: number,
-    @Query('valorMax') valorMax?: number,
+    @Query('valorMin') valorMin?: string,
+    @Query('valorMax') valorMax?: string,
     @Query('tipo') tipo?: 'entrada' | 'saida',
     @Query('somente_nao_classificados') somente_nao_classificados?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
+    const parsedValorMin = valorMin !== undefined ? parseFloat(valorMin) : NaN;
+    const parsedValorMax = valorMax !== undefined ? parseFloat(valorMax) : NaN;
     const filters: TransactionFilters = {
       dataInicio,
       dataFim,
@@ -35,12 +37,12 @@ export class TransactionsController {
       subcategoria,
       banco,
       busca,
-      valorMin,
-      valorMax,
+      valorMin: !isNaN(parsedValorMin) ? parsedValorMin : undefined,
+      valorMax: !isNaN(parsedValorMax) ? parsedValorMax : undefined,
       tipo,
       somente_nao_classificados: somente_nao_classificados === 'true',
-      page: page || 1,
-      limit: limit || 50,
+      page: parseInt(page || '1', 10) || 1,
+      limit: parseInt(limit || '50', 10) || 50,
     };
     return this.txService.findAll(filters);
   }

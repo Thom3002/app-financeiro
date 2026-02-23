@@ -23,19 +23,26 @@ export class RulesService {
     return this.ruleRepo.findOneBy({ id });
   }
 
-  create(data: Partial<ClassificationRule>) {
+  async create(data: Partial<ClassificationRule>) {
     const rule = this.ruleRepo.create(data);
-    return this.ruleRepo.save(rule);
+    const saved = await this.ruleRepo.save(rule);
+    await this.classifierService.reclassifyAll();
+    return saved;
   }
 
   async update(id: string, data: Partial<ClassificationRule>) {
     await this.ruleRepo.update(id, data);
-    return this.ruleRepo.findOneBy({ id });
+    const updated = await this.ruleRepo.findOneBy({ id });
+    await this.classifierService.reclassifyAll();
+    return updated;
   }
 
   async remove(id: string) {
     const rule = await this.ruleRepo.findOneBy({ id });
-    if (rule) await this.ruleRepo.remove(rule);
+    if (rule) {
+      await this.ruleRepo.remove(rule);
+      await this.classifierService.reclassifyAll();
+    }
     return rule;
   }
 
@@ -149,6 +156,11 @@ export class RulesService {
       } catch (e) {
         errors.push(`Erro: ${(e as Error).message}`);
       }
+    }
+
+    // Reclassify all after bulk import
+    if (imported > 0) {
+      await this.classifierService.reclassifyAll();
     }
 
     return { imported, errors };

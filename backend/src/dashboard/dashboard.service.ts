@@ -117,8 +117,7 @@ export class DashboardService {
     if (dataFim) qb2.andWhere('tx.data <= :dataFim', { dataFim });
 
     const transactions = await qb2
-      .orderBy('ABS(tx.valor)', 'DESC')
-      .limit(20)
+      .orderBy('tx.data', 'DESC')
       .getMany();
 
     return {

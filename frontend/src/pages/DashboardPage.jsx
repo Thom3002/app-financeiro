@@ -12,6 +12,8 @@ export default function DashboardPage() {
     const [drilldown, setDrilldown] = useState(null);
     const [loading, setLoading] = useState(true);
     const [filters, setFilters] = useState({ dataInicio: '', dataFim: '' });
+    const [drilldownPage, setDrilldownPage] = useState(1);
+    const DRILLDOWN_PAGE_SIZE = 15;
 
     const load = async () => {
         setLoading(true);
@@ -32,6 +34,7 @@ export default function DashboardPage() {
         try {
             const d = await api.getDashboardDrilldown(cat, filters);
             setDrilldown(d);
+            setDrilldownPage(1);
         } catch (e) { console.error(e); }
     };
 
@@ -159,12 +162,13 @@ export default function DashboardPage() {
                         {drilldown.bySubcategory?.length > 0 && (
                             <div className="table-container mb-4">
                                 <table>
-                                    <thead><tr><th>Subcategoria</th><th className="text-right">Saídas</th><th className="text-right">#</th></tr></thead>
+                                    <thead><tr><th>Subcategoria</th><th className="text-right">Saídas</th><th className="text-right">Entradas</th><th className="text-right">#</th></tr></thead>
                                     <tbody>
                                         {drilldown.bySubcategory.map((s, i) => (
                                             <tr key={i}>
                                                 <td>{s.subcategoria || '(sem sub)'}</td>
                                                 <td className="text-right valor-negativo">{fmt(parseFloat(s.total_saidas) || 0)}</td>
+                                                <td className="text-right valor-positivo">{fmt(parseFloat(s.total_entradas) || 0)}</td>
                                                 <td className="text-right text-muted">{s.count}</td>
                                             </tr>
                                         ))}
@@ -177,16 +181,37 @@ export default function DashboardPage() {
                             <table>
                                 <thead><tr><th>Data</th><th>Descrição</th><th className="text-right">Valor</th></tr></thead>
                                 <tbody>
-                                    {(drilldown.transactions || []).map((t) => (
-                                        <tr key={t.id}>
-                                            <td style={{ whiteSpace: 'nowrap' }}>{t.data?.split('-').reverse().join('/')}</td>
-                                            <td className="truncate">{t.descricao}</td>
-                                            <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>{fmt(t.valor)}</td>
-                                        </tr>
-                                    ))}
+                                    {(drilldown.transactions || [])
+                                        .slice((drilldownPage - 1) * DRILLDOWN_PAGE_SIZE, drilldownPage * DRILLDOWN_PAGE_SIZE)
+                                        .map((t) => (
+                                            <tr key={t.id}>
+                                                <td style={{ whiteSpace: 'nowrap' }}>{t.data?.split('-').reverse().join('/')}</td>
+                                                <td className="truncate">{t.descricao}</td>
+                                                <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>{fmt(t.valor)}</td>
+                                            </tr>
+                                        ))}
                                 </tbody>
                             </table>
                         </div>
+                        {drilldown.transactions?.length > DRILLDOWN_PAGE_SIZE && (
+                            <div className="flex-between mt-4">
+                                <span className="text-sm text-muted">
+                                    Página {drilldownPage} de {Math.ceil(drilldown.transactions.length / DRILLDOWN_PAGE_SIZE)}
+                                </span>
+                                <div className="btn-group">
+                                    <button
+                                        className="btn btn-sm btn-secondary"
+                                        onClick={() => setDrilldownPage(p => Math.max(1, p - 1))}
+                                        disabled={drilldownPage === 1}
+                                    >Anterior</button>
+                                    <button
+                                        className="btn btn-sm btn-secondary"
+                                        onClick={() => setDrilldownPage(p => Math.min(Math.ceil(drilldown.transactions.length / DRILLDOWN_PAGE_SIZE), p + 1))}
+                                        disabled={drilldownPage >= Math.ceil(drilldown.transactions.length / DRILLDOWN_PAGE_SIZE)}
+                                    >Próxima</button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

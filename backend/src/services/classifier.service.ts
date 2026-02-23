@@ -23,6 +23,8 @@ export class ClassifierService {
   constructor(
     @InjectRepository(ClassificationRule)
     private readonly ruleRepo: Repository<ClassificationRule>,
+    @InjectRepository(Transaction)
+    private readonly txRepo: Repository<Transaction>,
   ) {}
 
   async loadRules(): Promise<ClassificationRule[]> {
@@ -37,19 +39,15 @@ export class ClassifierService {
     rules: ClassificationRule[],
   ): ClassificationResult {
     for (const rule of rules) {
-      // Check bank scope
       if (
         rule.banco_escopo !== 'qualquer' &&
         rule.banco_escopo.toUpperCase() !== tx.banco.toUpperCase()
       ) {
         continue;
       }
-
-      // Check sign scope
       if (rule.sinal_escopo === 'entrada' && tx.valor < 0) continue;
       if (rule.sinal_escopo === 'saida' && tx.valor > 0) continue;
 
-      // Build test string based on campo_alvo
       let testString = '';
       if (rule.campo_alvo === 'titulo') {
         testString = normalizeForMatch(tx.titulo);
@@ -59,7 +57,6 @@ export class ClassifierService {
         testString = normalizeForMatch(tx.titulo + ' ' + tx.descricao);
       }
 
-      // Test regex
       try {
         const regex = new RegExp(rule.regex, 'i');
         if (regex.test(testString)) {
@@ -70,7 +67,6 @@ export class ClassifierService {
           };
         }
       } catch {
-        // Invalid regex, skip
         continue;
       }
     }
@@ -93,12 +89,7 @@ export class ClassifierService {
     const changed: { id: string; before: string; after: string }[] = [];
 
     for (const tx of transactions) {
-      if (
-        !options?.overwriteManual &&
-        tx.is_manual
-      ) {
-        continue;
-      }
+      if (!options?.overwriteManual && tx.is_manual) continue;
       if (
         options?.onlyUnclassified &&
         tx.categoria &&
@@ -113,11 +104,7 @@ export class ClassifierService {
         result.categoria !== before ||
         result.subcategoria !== tx.subcategoria
       ) {
-        changed.push({
-          id: tx.id,
-          before,
-          after: result.categoria,
-        });
+        changed.push({ id: tx.id, before, after: result.categoria });
         tx.categoria = result.categoria;
         tx.subcategoria = result.subcategoria;
         tx.matched_rule_id = result.matched_rule_id;
@@ -137,5 +124,140 @@ export class ClassifierService {
     } catch (e) {
       return { matches: false, error: (e as Error).message };
     }
+  }
+
+  // --- New methods ---
+
+  /**
+   * Converts comma-separated keywords to a regex pattern.
+   * "uber, 99 pop, taxi" → "(?:uber|99\\s*pop|taxi)"
+   */
+  keywordsToRegex(keywords: string): string {
+    const parts = keywords
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean)
+      .map((k) =>
+        k
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex chars
+          .replace(/\s+/g, '\\s*'), // spaces become flexible whitespace
+      );
+    if (parts.length === 0) return '';
+    if (parts.length === 1) return parts[0];
+    return `(?:${parts.join('|')})`;
+  }
+
+  /**
+   * Reclassify ALL non-manual transactions using current rules.
+   * Called after every rule create/edit/delete.
+   */
+  async reclassifyAll(): Promise<{ totalChanged: number }> {
+    const rules = await this.loadRules();
+    const allTxs = await this.txRepo.find();
+
+    const changedTxs: Transaction[] = [];
+
+    for (const tx of allTxs) {
+      if (tx.is_manual) continue;
+
+      const result = this.classifyTransaction(tx, rules);
+      const changed =
+        result.categoria !== tx.categoria ||
+        result.subcategoria !== tx.subcategoria;
+
+      if (changed) {
+        tx.categoria = result.categoria;
+        tx.subcategoria = result.subcategoria;
+        tx.matched_rule_id = result.matched_rule_id;
+        changedTxs.push(tx);
+      }
+    }
+
+    // Batch save changed transactions
+    if (changedTxs.length > 0) {
+      await this.txRepo.save(changedTxs, { chunk: 500 });
+    }
+
+    return { totalChanged: changedTxs.length };
+  }
+
+  /**
+   * Detect conflicting rules: finds existing rules whose regex can match
+   * the same transactions as the given regex pattern.
+   */
+  async detectConflicts(
+    newRegex: string,
+    excludeRuleId?: string,
+  ): Promise<{
+    conflicts: {
+      rule: ClassificationRule;
+      overlapCount: number;
+      examples: { titulo: string; descricao: string }[];
+    }[];
+  }> {
+    const rules = await this.loadRules();
+    const allTxs = await this.txRepo.find();
+    const conflicts: {
+      rule: ClassificationRule;
+      overlapCount: number;
+      examples: { titulo: string; descricao: string }[];
+    }[] = [];
+
+    let newRe: RegExp;
+    try {
+      newRe = new RegExp(newRegex, 'i');
+    } catch {
+      return { conflicts: [] };
+    }
+
+    // Find transactions that match the new regex
+    const newMatches = new Set<string>();
+    for (const tx of allTxs) {
+      const text = normalizeForMatch(tx.titulo + ' ' + tx.descricao);
+      if (newRe.test(text)) {
+        newMatches.add(tx.id);
+      }
+    }
+
+    // Check overlap with each existing rule
+    for (const rule of rules) {
+      if (excludeRuleId && rule.id === excludeRuleId) continue;
+
+      let ruleRe: RegExp;
+      try {
+        ruleRe = new RegExp(rule.regex, 'i');
+      } catch {
+        continue;
+      }
+
+      const overlapping: { titulo: string; descricao: string }[] = [];
+      for (const tx of allTxs) {
+        if (!newMatches.has(tx.id)) continue;
+        const text = normalizeForMatch(tx.titulo + ' ' + tx.descricao);
+        if (ruleRe.test(text)) {
+          if (overlapping.length < 3) {
+            overlapping.push({ titulo: tx.titulo, descricao: tx.descricao });
+          }
+        }
+      }
+
+      if (overlapping.length > 0) {
+        // Count total overlaps
+        let overlapCount = 0;
+        for (const tx of allTxs) {
+          if (!newMatches.has(tx.id)) continue;
+          const text = normalizeForMatch(tx.titulo + ' ' + tx.descricao);
+          if (ruleRe.test(text)) overlapCount++;
+        }
+
+        conflicts.push({
+          rule,
+          overlapCount,
+          examples: overlapping,
+        });
+      }
+    }
+
+    return { conflicts };
   }
 }

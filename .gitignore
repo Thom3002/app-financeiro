@@ -5,3 +5,10 @@
 .DS_Store
 # ignore swift build files
 .build/
+
+# ignore data and databases
+backend/data/*.db
+backend/data/*.sqlite
+backend/data/*.csv
+*.db
+*.sqlite

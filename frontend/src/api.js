@@ -88,4 +88,10 @@ export const api = {
         ).toString();
         return request(`/dashboard/drilldown/${encodeURIComponent(categoria)}${qs ? '?' + qs : ''}`);
     },
+
+    // Classification
+    getClassificationSuggestions: () => request('/classification/suggestions'),
+    previewKeyword: (data) => request('/classification/preview-keyword', { method: 'POST', body: data }),
+    applyClassification: (data) => request('/classification/apply', { method: 'POST', body: data }),
+    reorderRules: (ruleIds) => request('/classification/reorder', { method: 'POST', body: { ruleIds } }),
 };

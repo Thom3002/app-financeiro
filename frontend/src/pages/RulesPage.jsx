@@ -88,11 +88,13 @@ export default function RulesPage() {
         }
     };
 
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
     const deleteRule = async (id) => {
-        if (!confirm('Excluir esta regra?')) return;
         try {
             await api.deleteRule(id);
             loadRules();
+            setConfirmDeleteId(null);
         } catch (e) {
             alert(e.message);
         }
@@ -302,7 +304,11 @@ export default function RulesPage() {
                                     <td>
                                         <div className="btn-group">
                                             <button className="btn btn-sm btn-secondary" onClick={() => openEdit(r)}>✏️</button>
-                                            <button className="btn btn-sm btn-danger" onClick={() => deleteRule(r.id)}>🗑</button>
+                                            {confirmDeleteId === r.id ? (
+                                                <button className="btn btn-sm btn-danger" onClick={() => deleteRule(r.id)}>Confirmar?</button>
+                                            ) : (
+                                                <button className="btn btn-sm btn-danger" onClick={() => setConfirmDeleteId(r.id)}>🗑</button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

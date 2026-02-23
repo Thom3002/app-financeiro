@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
+import ConflictPanel from '../components/ConflictPanel';
+
+function extractKeywordFromTx(tx) {
+    // Extract a meaningful keyword from the transaction description
+    const text = (tx.descricao || tx.titulo || '').toLowerCase();
+    // Remove common noise
+    const noise = /\b(debito de cartao|rever par deb cartao|pix recebido de|pix enviado para|transf enviada pix|bra)\b/gi;
+    let cleaned = text.replace(noise, '').replace(/\s+/g, ' ').trim();
+    // Take first meaningful words (up to 3)
+    const words = cleaned.split(' ').filter(w => w.length > 2).slice(0, 3);
+    return words.join(' ');
+}
 
 export default function TransactionsPage() {
     const [data, setData] = useState({ items: [], total: 0, page: 1, totalPages: 0 });
@@ -8,6 +20,16 @@ export default function TransactionsPage() {
     const [banks, setBanks] = useState([]);
     const [editingId, setEditingId] = useState(null);
     const [editValues, setEditValues] = useState({ categoria: '', subcategoria: '' });
+
+    // +Regra state
+    const [ruleTarget, setRuleTarget] = useState(null); // transaction being used to create rule
+    const [ruleKeywords, setRuleKeywords] = useState('');
+    const [ruleCategoria, setRuleCategoria] = useState('');
+    const [ruleSubcategoria, setRuleSubcategoria] = useState('');
+    const [rulePreview, setRulePreview] = useState(null);
+    const [ruleSaving, setRuleSaving] = useState(false);
+    const [conflicts, setConflicts] = useState(null);
+    const [successMsg, setSuccessMsg] = useState('');
 
     const [filters, setFilters] = useState({
         dataInicio: '',
@@ -70,6 +92,75 @@ export default function TransactionsPage() {
         setEditValues({ categoria: '', subcategoria: '' });
     };
 
+    // +Regra handlers
+    const startRule = (tx) => {
+        const kw = extractKeywordFromTx(tx);
+        setRuleTarget(tx);
+        setRuleKeywords(kw);
+        setRuleCategoria('');
+        setRuleSubcategoria('');
+        setRulePreview(null);
+        // Auto-preview
+        if (kw) {
+            api.previewKeyword({ keywords: kw }).then(setRulePreview).catch(() => { });
+        }
+    };
+
+    const cancelRule = () => {
+        setRuleTarget(null);
+        setRuleKeywords('');
+        setRuleCategoria('');
+        setRuleSubcategoria('');
+        setRulePreview(null);
+    };
+
+    const previewRule = async () => {
+        if (!ruleKeywords.trim()) return;
+        try {
+            const data = await api.previewKeyword({ keywords: ruleKeywords });
+            setRulePreview(data);
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const saveRule = async () => {
+        if (!ruleKeywords.trim() || !ruleCategoria.trim() || ruleSaving) return;
+        setRuleSaving(true);
+        try {
+            const result = await api.applyClassification({
+                keywords: ruleKeywords,
+                categoria: ruleCategoria,
+                subcategoria: ruleSubcategoria || undefined,
+            });
+            if (result.conflicts && result.conflicts.length > 0) {
+                setConflicts(result.conflicts);
+            }
+            setSuccessMsg(
+                `✅ Regra criada! ${result.transactionsClassified} transações reclassificadas.`
+            );
+            cancelRule();
+            loadData();
+            api.getDistinctCategories().then(setCategories).catch(() => { });
+            setTimeout(() => setSuccessMsg(''), 4000);
+        } catch (e) {
+            alert('Erro: ' + e.message);
+        }
+        setRuleSaving(false);
+    };
+
+    const handleReorder = async (ruleIds) => {
+        try {
+            await api.reorderRules(ruleIds);
+            setConflicts(null);
+            setSuccessMsg('✅ Prioridades atualizadas e transações reclassificadas.');
+            loadData();
+            setTimeout(() => setSuccessMsg(''), 4000);
+        } catch (e) {
+            alert('Erro: ' + e.message);
+        }
+    };
+
     const formatCurrency = (v) =>
         new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -85,6 +176,83 @@ export default function TransactionsPage() {
                 <h2>💳 Transações</h2>
                 <p>{data.total} transações encontradas</p>
             </div>
+
+            {successMsg && (
+                <div className="alert alert-success">{successMsg}</div>
+            )}
+
+            {/* Conflict Modal */}
+            {conflicts && conflicts.length > 0 && (
+                <ConflictPanel
+                    conflicts={conflicts}
+                    onReorder={handleReorder}
+                    onDismiss={() => setConflicts(null)}
+                />
+            )}
+
+            {/* +Regra Modal */}
+            {ruleTarget && (
+                <div className="card rule-creation-card" style={{ marginBottom: 20 }}>
+                    <div className="card-header">
+                        <h3 className="card-title">
+                            ➕ Criar regra a partir de: <em style={{ color: 'var(--accent-primary-hover)' }}>
+                                {ruleTarget.descricao || ruleTarget.titulo}
+                            </em>
+                        </h3>
+                        <button className="btn btn-sm btn-secondary" onClick={cancelRule}>✕ Fechar</button>
+                    </div>
+                    <div className="keyword-form">
+                        <div className="keyword-row">
+                            <div className="form-group" style={{ flex: 2 }}>
+                                <label className="form-label">Palavras-chave (edite se necessário)</label>
+                                <input
+                                    className="form-input"
+                                    value={ruleKeywords}
+                                    onChange={(e) => { setRuleKeywords(e.target.value); setRulePreview(null); }}
+                                />
+                            </div>
+                            <div className="form-group" style={{ flex: 1 }}>
+                                <label className="form-label">Categoria</label>
+                                <input
+                                    className="form-input"
+                                    placeholder="Ex: Transporte"
+                                    value={ruleCategoria}
+                                    onChange={(e) => setRuleCategoria(e.target.value)}
+                                    list="cat-list"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="form-group" style={{ flex: 1 }}>
+                                <label className="form-label">Subcategoria</label>
+                                <input
+                                    className="form-input"
+                                    placeholder="Opcional"
+                                    value={ruleSubcategoria}
+                                    onChange={(e) => setRuleSubcategoria(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="keyword-actions">
+                            <button className="btn btn-secondary" onClick={previewRule} disabled={!ruleKeywords.trim()}>
+                                👁 Pré-visualizar
+                            </button>
+                            {rulePreview && (
+                                <span className="preview-badge" style={{ margin: 0 }}>
+                                    <strong>{rulePreview.matchCount}</strong> transações seriam classificadas
+                                </span>
+                            )}
+                            <button
+                                className="btn btn-lg btn-primary"
+                                style={{ marginLeft: 'auto' }}
+                                disabled={!ruleKeywords.trim() || !ruleCategoria.trim() || ruleSaving}
+                                onClick={saveRule}
+                            >
+                                {ruleSaving ? '⏳ Salvando...' : '✅ Salvar regra e classificar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Filter Bar */}
             <div className="filter-bar">
@@ -241,12 +409,22 @@ export default function TransactionsPage() {
                                             <span className="badge badge-accent">{tx.banco}</span>
                                         </td>
                                         <td>
-                                            {editingId === tx.id && (
-                                                <div className="btn-group">
-                                                    <button className="btn btn-sm btn-primary" onClick={saveEdit}>✓</button>
-                                                    <button className="btn btn-sm btn-secondary" onClick={cancelEdit}>✕</button>
-                                                </div>
-                                            )}
+                                            <div className="btn-group">
+                                                {editingId === tx.id ? (
+                                                    <>
+                                                        <button className="btn btn-sm btn-primary" onClick={saveEdit}>✓</button>
+                                                        <button className="btn btn-sm btn-secondary" onClick={cancelEdit}>✕</button>
+                                                    </>
+                                                ) : (
+                                                    <button
+                                                        className="btn btn-sm btn-secondary"
+                                                        onClick={() => startRule(tx)}
+                                                        title="Criar regra a partir desta transação"
+                                                    >
+                                                        + Regra
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
