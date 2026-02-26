@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
+import { useVisibility } from '../contexts/VisibilityContext';
 
 const STEPS = ['Banco', 'Upload', 'Preview', 'Resultado'];
 
 export default function ImportPage() {
+    const { isVisible } = useVisibility();
     const [banks, setBanks] = useState([]);
     const [selectedBank, setSelectedBank] = useState('');
     const [step, setStep] = useState(0);
@@ -76,8 +78,10 @@ export default function ImportPage() {
         setSelectedBank('');
     };
 
-    const formatCurrency = (v) =>
-        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    const formatCurrency = (v) => {
+        if (!isVisible) return '*****';
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    };
 
     return (
         <div>

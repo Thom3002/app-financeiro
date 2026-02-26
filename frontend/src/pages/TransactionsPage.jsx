@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import ConflictPanel from '../components/ConflictPanel';
+import { useVisibility } from '../contexts/VisibilityContext';
 
 function extractKeywordFromTx(tx) {
     // Extract a meaningful keyword from the transaction description
@@ -14,6 +15,7 @@ function extractKeywordFromTx(tx) {
 }
 
 export default function TransactionsPage() {
+    const { isVisible } = useVisibility();
     const [data, setData] = useState({ items: [], total: 0, page: 1, totalPages: 0 });
     const [loading, setLoading] = useState(true);
     const [categories, setCategories] = useState([]);
@@ -161,8 +163,10 @@ export default function TransactionsPage() {
         }
     };
 
-    const formatCurrency = (v) =>
-        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    const formatCurrency = (v) => {
+        if (!isVisible) return '*****';
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    };
 
     const formatDate = (d) => {
         if (!d) return '';

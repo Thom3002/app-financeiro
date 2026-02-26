@@ -7,6 +7,7 @@ import CategoriesPage from './pages/CategoriesPage';
 import DashboardPage from './pages/DashboardPage';
 import ClassifyPage from './pages/ClassifyPage';
 import { api } from './api';
+import { useVisibility } from './contexts/VisibilityContext';
 
 const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊' },
@@ -19,6 +20,7 @@ const navItems = [
 
 export default function App() {
     const [unclassifiedCount, setUnclassifiedCount] = useState(0);
+    const { isVisible, toggleVisibility } = useVisibility();
 
     useEffect(() => {
         api.getClassificationSuggestions()
@@ -50,6 +52,29 @@ export default function App() {
                         </NavLink>
                     ))}
                 </nav>
+                <div className="sidebar-footer" style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <button
+                        onClick={toggleVisibility}
+                        style={{
+                            width: '100%',
+                            padding: '10px',
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '8px',
+                            color: '#f8fafc',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                    >
+                        {isVisible ? '🙈 Ocultar Valores' : '👁️ Mostrar Valores'}
+                    </button>
+                </div>
             </aside>
 
             <main className="main-content">

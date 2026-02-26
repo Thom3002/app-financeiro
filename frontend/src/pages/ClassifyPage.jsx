@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import ConflictPanel from '../components/ConflictPanel';
-
-const fmt = (v) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+import { useVisibility } from '../contexts/VisibilityContext';
 
 export default function ClassifyPage() {
+    const { isVisible } = useVisibility();
+    const fmt = (v) => {
+        if (!isVisible) return '*****';
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    };
+
     const [suggestions, setSuggestions] = useState([]);
     const [totalUnclassified, setTotalUnclassified] = useState(0);
     const [loading, setLoading] = useState(true);

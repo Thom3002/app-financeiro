@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { useVisibility } from '../contexts/VisibilityContext';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#f87171', '#f472b6', '#38bdf8', '#fb923c'];
 
 const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 export default function DashboardPage() {
+    const { isVisible } = useVisibility();
+    const formatValue = (v) => !isVisible ? '*****' : fmt(v);
+
     const [summary, setSummary] = useState(null);
     const [timeline, setTimeline] = useState([]);
     const [drilldown, setDrilldown] = useState(null);
@@ -60,15 +64,15 @@ export default function DashboardPage() {
             <div className="stats-grid">
                 <div className="stat-card">
                     <div className="stat-label">💰 Total Entradas</div>
-                    <div className="stat-value positive">{fmt(summary.entradas)}</div>
+                    <div className="stat-value positive">{formatValue(summary.entradas)}</div>
                 </div>
                 <div className="stat-card">
                     <div className="stat-label">💸 Total Saídas</div>
-                    <div className="stat-value negative">{fmt(summary.saidas)}</div>
+                    <div className="stat-value negative">{formatValue(summary.saidas)}</div>
                 </div>
                 <div className="stat-card">
                     <div className="stat-label">📈 Saldo</div>
-                    <div className={`stat-value ${summary.saldo >= 0 ? 'positive' : 'negative'}`}>{fmt(summary.saldo)}</div>
+                    <div className={`stat-value ${summary.saldo >= 0 ? 'positive' : 'negative'}`}>{formatValue(summary.saldo)}</div>
                 </div>
                 <div className="stat-card">
                     <div className="stat-label">🧾 Transações</div>
@@ -85,8 +89,8 @@ export default function DashboardPage() {
                             <BarChart data={timeline}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                                 <XAxis dataKey="mes" stroke="#64748b" fontSize={12} />
-                                <YAxis stroke="#64748b" fontSize={12} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
-                                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f1f5f9' }} formatter={v => fmt(v)} />
+                                <YAxis stroke="#64748b" fontSize={12} tickFormatter={v => !isVisible ? '*****' : `R$${(v / 1000).toFixed(0)}k`} />
+                                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f1f5f9' }} formatter={v => formatValue(v)} />
                                 <Legend />
                                 <Bar dataKey="entradas" fill="#34d399" name="Entradas" radius={[4, 4, 0, 0]} />
                                 <Bar dataKey="saidas" fill="#f87171" name="Saídas" radius={[4, 4, 0, 0]} />
@@ -104,7 +108,7 @@ export default function DashboardPage() {
                                 <Pie data={pieData} dataKey="saidas" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} style={{ fontSize: 11 }}>
                                     {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                                 </Pie>
-                                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f1f5f9' }} formatter={v => fmt(v)} />
+                                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f1f5f9' }} formatter={v => formatValue(v)} />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
@@ -121,8 +125,8 @@ export default function DashboardPage() {
                             {catData.map((c, i) => (
                                 <tr key={i}>
                                     <td><span className="badge badge-accent" style={{ cursor: 'pointer' }} onClick={() => openDrilldown(c.name)}>{c.name}</span></td>
-                                    <td className="text-right valor-negativo">{fmt(c.saidas)}</td>
-                                    <td className="text-right valor-positivo">{fmt(c.entradas)}</td>
+                                    <td className="text-right valor-negativo">{formatValue(c.saidas)}</td>
+                                    <td className="text-right valor-positivo">{formatValue(c.entradas)}</td>
                                     <td><button className="btn btn-sm btn-secondary" onClick={() => openDrilldown(c.name)}>Detalhar →</button></td>
                                 </tr>
                             ))}
@@ -142,7 +146,7 @@ export default function DashboardPage() {
                                 <tr key={t.id}>
                                     <td style={{ whiteSpace: 'nowrap' }}>{t.data?.split('-').reverse().join('/')}</td>
                                     <td className="truncate">{t.titulo}</td>
-                                    <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>{fmt(t.valor)}</td>
+                                    <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>{formatValue(t.valor)}</td>
                                     <td><span className="badge badge-default">{t.categoria || '—'}</span></td>
                                 </tr>
                             ))}
@@ -167,8 +171,8 @@ export default function DashboardPage() {
                                         {drilldown.bySubcategory.map((s, i) => (
                                             <tr key={i}>
                                                 <td>{s.subcategoria || '(sem sub)'}</td>
-                                                <td className="text-right valor-negativo">{fmt(parseFloat(s.total_saidas) || 0)}</td>
-                                                <td className="text-right valor-positivo">{fmt(parseFloat(s.total_entradas) || 0)}</td>
+                                                <td className="text-right valor-negativo">{formatValue(parseFloat(s.total_saidas) || 0)}</td>
+                                                <td className="text-right valor-positivo">{formatValue(parseFloat(s.total_entradas) || 0)}</td>
                                                 <td className="text-right text-muted">{s.count}</td>
                                             </tr>
                                         ))}
@@ -187,7 +191,7 @@ export default function DashboardPage() {
                                             <tr key={t.id}>
                                                 <td style={{ whiteSpace: 'nowrap' }}>{t.data?.split('-').reverse().join('/')}</td>
                                                 <td className="truncate">{t.descricao}</td>
-                                                <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>{fmt(t.valor)}</td>
+                                                <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>{formatValue(t.valor)}</td>
                                             </tr>
                                         ))}
                                 </tbody>
