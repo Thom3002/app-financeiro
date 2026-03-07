@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import { useVisibility } from '../contexts/VisibilityContext';
 
 export default function RulesPage() {
+    const { isVisible, toggleVisibility } = useVisibility();
     const [rules, setRules] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -10,6 +12,7 @@ export default function RulesPage() {
     const [testResult, setTestResult] = useState(null);
     const [testText, setTestText] = useState('');
     const [showSimulate, setShowSimulate] = useState(false);
+    const [allCategories, setAllCategories] = useState([]); // [{id, nome, children:[]}]
     const [simForm, setSimForm] = useState({
         dataInicio: '',
         dataFim: '',
@@ -35,7 +38,15 @@ export default function RulesPage() {
 
     useEffect(() => {
         loadRules();
+        api.getCategoriesFlat().then(cats => {
+            setAllCategories(cats.filter(c => !c.parent_id));
+        }).catch(() => { });
     }, []);
+
+    const getSubcategoryOptions = (catName) => {
+        const cat = allCategories.find(c => c.nome === catName);
+        return cat?.children || [];
+    };
 
     const loadRules = async () => {
         setLoading(true);
@@ -374,8 +385,12 @@ export default function RulesPage() {
                                 <input type="text" className="form-input"
                                     placeholder="Transporte"
                                     value={form.categoria}
-                                    onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}
+                                    onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value, subcategoria: '' }))}
+                                    list="rules-cat-list"
                                 />
+                                <datalist id="rules-cat-list">
+                                    {allCategories.map(c => <option key={c.id} value={c.nome} />)}
+                                </datalist>
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Subcategoria</label>
@@ -383,7 +398,11 @@ export default function RulesPage() {
                                     placeholder="Uber"
                                     value={form.subcategoria}
                                     onChange={(e) => setForm((f) => ({ ...f, subcategoria: e.target.value }))}
+                                    list="rules-subcat-list"
                                 />
+                                <datalist id="rules-subcat-list">
+                                    {getSubcategoryOptions(form.categoria).map(s => <option key={s.id} value={s.nome} />)}
+                                </datalist>
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Prioridade</label>

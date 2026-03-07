@@ -5,9 +5,10 @@ import { RulesService } from './rules.service';
 import { ClassificationRule } from '../entities/classification-rule.entity';
 import { Transaction } from '../entities/transaction.entity';
 import { ClassifierService } from '../services/classifier.service';
+import { CategoriesModule } from '../categories/categories.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ClassificationRule, Transaction])],
+  imports: [TypeOrmModule.forFeature([ClassificationRule, Transaction]), CategoriesModule],
   controllers: [RulesController],
   providers: [RulesService, ClassifierService],
 })

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ClassificationRule } from '../entities/classification-rule.entity';
 import { Transaction } from '../entities/transaction.entity';
 import { ClassifierService } from '../services/classifier.service';
+import { CategoriesService } from '../categories/categories.service';
 
 @Injectable()
 export class RulesService {
@@ -13,6 +14,7 @@ export class RulesService {
     @InjectRepository(Transaction)
     private readonly txRepo: Repository<Transaction>,
     private readonly classifierService: ClassifierService,
+    private readonly categoriesService: CategoriesService,
   ) {}
 
   findAll() {
@@ -26,6 +28,7 @@ export class RulesService {
   async create(data: Partial<ClassificationRule>) {
     const rule = this.ruleRepo.create(data);
     const saved = await this.ruleRepo.save(rule);
+    await this.categoriesService.ensureExists(saved.categoria, saved.subcategoria);
     await this.classifierService.reclassifyAll();
     return saved;
   }
@@ -33,6 +36,9 @@ export class RulesService {
   async update(id: string, data: Partial<ClassificationRule>) {
     await this.ruleRepo.update(id, data);
     const updated = await this.ruleRepo.findOneBy({ id });
+    if (updated) {
+      await this.categoriesService.ensureExists(updated.categoria, updated.subcategoria);
+    }
     await this.classifierService.reclassifyAll();
     return updated;
   }

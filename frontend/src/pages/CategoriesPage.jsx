@@ -7,6 +7,7 @@ export default function CategoriesPage() {
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState({ nome: '', parent_id: '', cor: '#6366f1' });
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
     const loadData = async () => {
         setLoading(true);
@@ -39,9 +40,11 @@ export default function CategoriesPage() {
     };
 
     const remove = async (id) => {
-        if (!confirm('Excluir esta categoria?')) return;
-        await api.deleteCategory(id).catch((e) => alert(e.message));
-        loadData();
+        try {
+            await api.deleteCategory(id);
+            setConfirmDeleteId(null);
+            loadData();
+        } catch (e) { alert(e.message); }
     };
 
     return (
@@ -69,7 +72,11 @@ export default function CategoriesPage() {
                                     <div className="btn-group">
                                         <button className="btn btn-sm btn-secondary" onClick={() => openNew(cat.id)}>+ Sub</button>
                                         <button className="btn btn-sm btn-secondary" onClick={() => openEdit(cat)}>✏️</button>
-                                        <button className="btn btn-sm btn-danger" onClick={() => remove(cat.id)}>🗑</button>
+                                        {confirmDeleteId === cat.id ? (
+                                            <button className="btn btn-sm btn-danger" onClick={() => remove(cat.id)}>Confirmar?</button>
+                                        ) : (
+                                            <button className="btn btn-sm btn-danger" onClick={() => setConfirmDeleteId(cat.id)}>🗑</button>
+                                        )}
                                     </div>
                                 </div>
                                 {cat.children?.map((sub) => (
@@ -80,7 +87,11 @@ export default function CategoriesPage() {
                                         </div>
                                         <div className="btn-group">
                                             <button className="btn btn-sm btn-secondary" onClick={() => openEdit(sub)}>✏️</button>
-                                            <button className="btn btn-sm btn-danger" onClick={() => remove(sub.id)}>🗑</button>
+                                            {confirmDeleteId === sub.id ? (
+                                                <button className="btn btn-sm btn-danger" onClick={() => remove(sub.id)}>Confirmar?</button>
+                                            ) : (
+                                                <button className="btn btn-sm btn-danger" onClick={() => setConfirmDeleteId(sub.id)}>🗑</button>
+                                            )}
                                         </div>
                                     </div>
                                 ))}

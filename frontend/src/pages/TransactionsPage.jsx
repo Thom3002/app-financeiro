@@ -19,6 +19,7 @@ export default function TransactionsPage() {
     const [data, setData] = useState({ items: [], total: 0, page: 1, totalPages: 0 });
     const [loading, setLoading] = useState(true);
     const [categories, setCategories] = useState([]);
+    const [allCategories, setAllCategories] = useState([]); // structured: [{id, nome, children:[]}]
     const [banks, setBanks] = useState([]);
     const [editingId, setEditingId] = useState(null);
     const [editValues, setEditValues] = useState({ categoria: '', subcategoria: '' });
@@ -64,9 +65,28 @@ export default function TransactionsPage() {
     }, [loadData]);
 
     useEffect(() => {
+        // Load distinct categories for filter dropdown
         api.getDistinctCategories().then(setCategories).catch(() => { });
         api.getDistinctBanks().then(setBanks).catch(() => { });
+        // Load structured categories (with children) for autocomplete
+        api.getCategoriesFlat().then(cats => {
+            // Only parent categories
+            setAllCategories(cats.filter(c => !c.parent_id));
+        }).catch(() => { });
     }, []);
+
+    const refreshCategories = () => {
+        api.getDistinctCategories().then(setCategories).catch(() => { });
+        api.getCategoriesFlat().then(cats => {
+            setAllCategories(cats.filter(c => !c.parent_id));
+        }).catch(() => { });
+    };
+
+    // Compute subcategory options for a given category name
+    const getSubcategoryOptions = (catName) => {
+        const cat = allCategories.find(c => c.nome === catName);
+        return cat?.children || [];
+    };
 
     const updateFilter = (key, value) => {
         setFilters((f) => ({ ...f, [key]: value, page: 1 }));
@@ -83,7 +103,7 @@ export default function TransactionsPage() {
             await api.updateTransactionCategory(editingId, editValues);
             setEditingId(null);
             loadData();
-            api.getDistinctCategories().then(setCategories).catch(() => { });
+            refreshCategories();
         } catch (e) {
             console.error(e);
         }
@@ -143,7 +163,7 @@ export default function TransactionsPage() {
             );
             cancelRule();
             loadData();
-            api.getDistinctCategories().then(setCategories).catch(() => { });
+            refreshCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
         } catch (e) {
             alert('Erro: ' + e.message);
@@ -221,10 +241,13 @@ export default function TransactionsPage() {
                                     className="form-input"
                                     placeholder="Ex: Transporte"
                                     value={ruleCategoria}
-                                    onChange={(e) => setRuleCategoria(e.target.value)}
-                                    list="cat-list"
+                                    onChange={(e) => { setRuleCategoria(e.target.value); setRuleSubcategoria(''); }}
+                                    list="rule-cat-list"
                                     autoFocus
                                 />
+                                <datalist id="rule-cat-list">
+                                    {allCategories.map(c => <option key={c.id} value={c.nome} />)}
+                                </datalist>
                             </div>
                             <div className="form-group" style={{ flex: 1 }}>
                                 <label className="form-label">Subcategoria</label>
@@ -233,7 +256,11 @@ export default function TransactionsPage() {
                                     placeholder="Opcional"
                                     value={ruleSubcategoria}
                                     onChange={(e) => setRuleSubcategoria(e.target.value)}
+                                    list="rule-subcat-list"
                                 />
+                                <datalist id="rule-subcat-list">
+                                    {getSubcategoryOptions(ruleCategoria).map(s => <option key={s.id} value={s.nome} />)}
+                                </datalist>
                             </div>
                         </div>
                         <div className="keyword-actions">

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
 import { ClassificationRule } from '../entities/classification-rule.entity';
 import { ClassifierService } from '../services/classifier.service';
+import { CategoriesService } from '../categories/categories.service';
 
 export interface SuggestionGroup {
   pattern: string;
@@ -85,6 +86,7 @@ export class ClassificationService {
     @InjectRepository(ClassificationRule)
     private readonly ruleRepo: Repository<ClassificationRule>,
     private readonly classifierService: ClassifierService,
+    private readonly categoriesService: CategoriesService,
   ) {}
 
   async getSuggestions(): Promise<{
@@ -234,6 +236,7 @@ export class ClassificationService {
       overwrite_manual: false,
     });
     const saved = await this.ruleRepo.save(rule);
+    await this.categoriesService.ensureExists(data.categoria, data.subcategoria);
 
     // Reclassify all
     const { totalChanged } = await this.classifierService.reclassifyAll();
