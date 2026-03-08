@@ -16,7 +16,10 @@ import { ClassificationModule } from './classification/classification.module';
 @Module({
   imports: [
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', '..', 'frontend', 'dist'),
+      // Como o frontend agora é um extraResource do Electron, ele fica na pasta Resources
+      rootPath: process.env.NODE_ENV === 'production'
+        ? join(process.env.APP_PATH || '', '..', 'frontend', 'dist')
+        : join(__dirname, '..', '..', 'frontend', 'dist'),
       exclude: ['/api/(.*)'],
     }),
     TypeOrmModule.forRoot({

@@ -32,23 +32,39 @@ function createWindow() {
     });
 
     // O Frontend e o Backend rodam na mesma porta (8000), e o Nest serve o index.html na raiz
-    mainWindow.loadURL('http://localhost:8000');
+    mainWindow.loadURL('http://localhost:8000').catch(err => {
+        console.error('Falha ao carregar a URL:', err);
+    });
+
+    // Abre o console de desenvolvedor para vermos eventuais erros no frontend
+    mainWindow.webContents.openDevTools();
 }
 
-app.whenReady().then(async () => {
-    // Inicia o backend
-    await startNestApp();
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+    app.quit();
+} else {
+    app.whenReady().then(async () => {
+        // Sinaliza para o NestJS onde está a raiz do ASAR e que estamos empacotados em produção
+        if (app.isPackaged) {
+            process.env.NODE_ENV = 'production';
+            process.env.APP_PATH = app.getAppPath();
+        }
 
-    // Dá um tempinho para o Nest iniciar
-    setTimeout(() => {
-        createWindow();
-    }, 1500);
+        // Inicia o backend
+        await startNestApp();
 
-    app.on('activate', function () {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+        // Dá um tempinho para o Nest iniciar
+        setTimeout(() => {
+            createWindow();
+        }, 1500);
+
+        app.on('activate', function () {
+            if (BrowserWindow.getAllWindows().length === 0) createWindow();
+        });
     });
-});
 
-app.on('window-all-closed', function () {
-    if (process.platform !== 'darwin') app.quit();
-});
+    app.on('window-all-closed', function () {
+        if (process.platform !== 'darwin') app.quit();
+    });
+}

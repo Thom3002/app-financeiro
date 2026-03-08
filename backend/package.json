@@ -81,9 +81,13 @@
       "desktop/main.js",
       "dist/**/*",
       "package.json",
-      "../frontend/dist/**/*"
+      "node_modules/**/*"
     ],
     "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      },
       {
         "from": "node_modules/better-sqlite3",
         "to": "app/node_modules/better-sqlite3",
