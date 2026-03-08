@@ -12,3 +12,4 @@ backend/data/*.sqlite
 backend/data/*.csv
 *.db
 *.sqlite
+release/
