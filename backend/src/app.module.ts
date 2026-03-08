@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { Transaction } from './entities/transaction.entity';
 import { ClassificationRule } from './entities/classification-rule.entity';
 import { Category } from './entities/category.entity';
@@ -13,6 +15,10 @@ import { ClassificationModule } from './classification/classification.module';
 
 @Module({
   imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', '..', 'frontend', 'dist'),
+      exclude: ['/api/(.*)'],
+    }),
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: process.env.DATABASE_PATH || './data/financeiro.db',
