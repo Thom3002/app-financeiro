@@ -7,6 +7,9 @@ on:
     tags:
       - 'v*' # Mantém suporte para as tags de versão fina
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
