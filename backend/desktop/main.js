@@ -20,7 +20,7 @@ async function startNestApp() {
     require('../dist/main.js');
 }
 
-function createWindow() {
+function createWindow(url) {
     const mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
@@ -31,8 +31,8 @@ function createWindow() {
         }
     });
 
-    // O Frontend e o Backend rodam na mesma porta (8000), e o Nest serve o index.html na raiz
-    mainWindow.loadURL('http://localhost:8000').catch(err => {
+    // O Frontend e o Backend rodam na mesma porta, e o Nest serve o index.html na raiz
+    mainWindow.loadURL(url).catch(err => {
         console.error('Falha ao carregar a URL:', err);
     });
 
@@ -54,13 +54,36 @@ if (!gotTheLock) {
         // Inicia o backend
         await startNestApp();
 
-        // Dá um tempinho para o Nest iniciar
-        setTimeout(() => {
-            createWindow();
-        }, 1500);
+        const port = process.env.PORT || 8000;
+        const url = `http://localhost:${port}`;
+
+        // Função para esperar o backend estar pronto (Health Check)
+        const http = require('http');
+        const waitForBackend = (url, retries = 20) => {
+            return new Promise((resolve) => {
+                const check = (attempt) => {
+                    http.get(url, (res) => {
+                        console.log(`[Electron] Backend pronto (Status: ${res.statusCode})`);
+                        resolve();
+                    }).on('error', () => {
+                        if (attempt < retries) {
+                            console.log(`[Electron] Aguardando backend... (tentativa ${attempt}/${retries})`);
+                            setTimeout(() => check(attempt + 1), 500);
+                        } else {
+                            console.error('[Electron] Backend não respondeu a tempo.');
+                            resolve(); // Abre de qualquer forma, o erro aparecerá na tela
+                        }
+                    });
+                };
+                check(1);
+            });
+        };
+
+        await waitForBackend(url);
+        createWindow(url);
 
         app.on('activate', function () {
-            if (BrowserWindow.getAllWindows().length === 0) createWindow();
+            if (BrowserWindow.getAllWindows().length === 0) createWindow(url);
         });
     });
 
