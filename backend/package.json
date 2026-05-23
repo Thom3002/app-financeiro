@@ -16,6 +16,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "start:electron": "npm run build && electron .",
+    "verify-builds": "node scripts/verify-builds.js",
+    "predist": "npm run verify-builds",
+    "prepack": "npm run verify-builds",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "prepare": "cd .. && husky backend/.husky"

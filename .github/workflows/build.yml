@@ -45,6 +45,10 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Run Backend Tests
+        working-directory: backend
+        run: npm run test
+
       - name: Build Electron App
         working-directory: backend
         env:
