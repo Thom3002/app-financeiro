@@ -33,6 +33,8 @@ describe('Static File Serving (Production Mode)', () => {
   let serverUrl: string;
   let tempDir: string;
 
+  // NestJS bootstrap with TypeORM can take >5s when running alongside other test suites
+  // because the module cache may already be warm and SQLite init may compete for resources.
   beforeAll(async () => {
     // 1. Create an isolated temp directory for serving mock frontend dist
     tempDir = path.resolve(__dirname, 'temp-static-test');
@@ -48,10 +50,16 @@ describe('Static File Serving (Production Mode)', () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_PATH = ':memory:';
 
-    // 3. Dynamically import AppModule so it reads the env variables we just set
+    // 3. Clear any cached version of app.module so it re-reads the env vars we just set.
+    //    This is necessary when tests run in the same worker as other suites that also
+    //    import app.module (Node.js caches CommonJS modules by file path).
+    const appModuleCacheKey = require.resolve('../src/app.module');
+    delete require.cache[appModuleCacheKey];
+
+    // 4. Dynamically import AppModule so it reads the env variables we just set
     const { AppModule } = await import('../src/app.module');
 
-    // 4. Bootstrap app using NestFactory.create so ServeStaticModule correctly resolves the httpAdapter
+    // 5. Bootstrap app using NestFactory.create so ServeStaticModule correctly resolves the httpAdapter
     app = await NestFactory.create(AppModule, {
       logger: false // Keep test output clean
     });
@@ -60,7 +68,7 @@ describe('Static File Serving (Production Mode)', () => {
     const address = app.getHttpServer().address();
     const port = typeof address === 'string' ? address : address.port;
     serverUrl = `http://localhost:${port}`;
-  });
+  }, 30000); // 30s timeout: NestJS + TypeORM init can be slow in a parallel test environment
 
   afterAll(async () => {
     if (app) {
@@ -73,7 +81,7 @@ describe('Static File Serving (Production Mode)', () => {
     delete process.env.APP_PATH;
     delete process.env.NODE_ENV;
     delete process.env.DATABASE_PATH;
-  });
+  }, 15000);
 
   it('deve servir o frontend index.html ao acessar a raiz', async () => {
     const res = await getUrl(`${serverUrl}/`);
