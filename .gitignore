@@ -14,3 +14,4 @@ backend/data/*.csv
 *.sqlite
 backend/release/
 *.dmg
+*.csv

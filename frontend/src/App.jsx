@@ -6,6 +6,7 @@ import RulesPage from './pages/RulesPage';
 import CategoriesPage from './pages/CategoriesPage';
 import DashboardPage from './pages/DashboardPage';
 import ClassifyPage from './pages/ClassifyPage';
+import SettingsPage from './pages/SettingsPage';
 import { api } from './api';
 import { useVisibility } from './contexts/VisibilityContext';
 
@@ -14,19 +15,40 @@ const navItems = [
     { path: '/import', label: 'Importar', icon: '📥' },
     { path: '/classify', label: 'Classificar', icon: '🏷️', hasBadge: true },
     { path: '/transactions', label: 'Transações', icon: '💳' },
-    { path: '/rules', label: 'Regras', icon: '⚙️' },
+    { path: '/rules', label: 'Regras', icon: '📋' },
     { path: '/categories', label: 'Categorias', icon: '🗂️' },
+    { path: '/settings', label: 'Configurações', icon: '⚙️', hasUpdateBadge: true },
 ];
 
 export default function App() {
     const [unclassifiedCount, setUnclassifiedCount] = useState(0);
     const { isVisible, toggleVisibility } = useVisibility();
+    const [appVersion, setAppVersion] = useState('');
+    const [updateInfo, setUpdateInfo] = useState(null); // { version, ready }
+
+    const isElectron = !!window.electronAPI;
 
     useEffect(() => {
         api.getClassificationSuggestions()
             .then((data) => setUnclassifiedCount(data.totalUnclassified || 0))
             .catch(() => { });
-    }, []);
+
+        if (isElectron) {
+            // Busca versão do app
+            window.electronAPI.getVersion().then(setAppVersion).catch(console.error);
+
+            // Escuta eventos de atualização para notificar o usuário na tela principal
+            const removeUpdateListener = window.electronAPI.onUpdateEvent((evt) => {
+                if (evt.status === 'available') {
+                    setUpdateInfo({ version: evt.version });
+                } else if (evt.status === 'downloaded') {
+                    setUpdateInfo({ version: evt.version, ready: true });
+                }
+            });
+
+            return () => removeUpdateListener();
+        }
+    }, [isElectron]);
 
     return (
         <div className="app-layout">
@@ -49,10 +71,39 @@ export default function App() {
                             {item.hasBadge && unclassifiedCount > 0 && (
                                 <span className="nav-badge">{unclassifiedCount}</span>
                             )}
+                            {item.hasUpdateBadge && updateInfo?.ready && (
+                                <span className="nav-badge" style={{ backgroundColor: '#22c55e', color: 'white', padding: '1px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 'bold' }}>↓</span>
+                            )}
                         </NavLink>
                     ))}
                 </nav>
-                <div className="sidebar-footer" style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <div className="sidebar-footer" style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {appVersion && (
+                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textAlign: 'center', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            Versão: v{appVersion}
+                            {updateInfo?.ready && (
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        window.electronAPI.quitAndInstall();
+                                    }}
+                                    style={{
+                                        background: '#22c55e',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        fontSize: '9px',
+                                        fontWeight: 'bold',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Reiniciar
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <button
                         onClick={toggleVisibility}
                         style={{
@@ -77,7 +128,7 @@ export default function App() {
                 </div>
             </aside>
 
-            <main className="main-content">
+            <main className="main-content" style={{ position: 'relative' }}>
                 <Routes>
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
@@ -86,6 +137,7 @@ export default function App() {
                     <Route path="/transactions" element={<TransactionsPage />} />
                     <Route path="/rules" element={<RulesPage />} />
                     <Route path="/categories" element={<CategoriesPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
                 </Routes>
             </main>
         </div>
