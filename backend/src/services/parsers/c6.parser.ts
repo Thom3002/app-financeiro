@@ -1,14 +1,6 @@
 import { createHash } from 'crypto';
 import { parse } from 'csv-parse/sync';
-
-export interface ParsedTransaction {
-  id: string;
-  data: string;
-  titulo: string;
-  descricao: string;
-  valor: number;
-  banco: string;
-}
+import { ParsedTransaction } from './parser.registry';
 
 function normalizeText(text: string): string {
   return (text || '')
@@ -184,6 +176,7 @@ export function parseC6Csv(csvContent: string): {
         descricao,
         valor: Math.round(valor * 100) / 100,
         banco: 'C6',
+        account_type: 'CHECKING',
       });
     } catch (e) {
       errors.push(

@@ -19,7 +19,7 @@ import { ClassificationModule } from './classification/classification.module';
       // Como o frontend agora é um extraResource do Electron, ele fica na pasta Resources
       rootPath: process.env.NODE_ENV === 'production'
         ? join(process.env.APP_PATH || '', '..', 'frontend', 'dist')
-        : join(__dirname, '..', '..', 'frontend', 'dist'),
+        : join(process.cwd(), '..', 'frontend', 'dist'),
       exclude: ['/api/(.*)'],
     }),
     TypeOrmModule.forRoot({
