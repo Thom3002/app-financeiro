@@ -32,6 +32,7 @@ runCommand('npm run test', backendDir);
 console.log('\n🔍 Verifying built artifacts existence and integrity...');
 
 const frontendIndexHtml = path.join(frontendDir, 'dist', 'index.html');
+const backendMainJsSrc = path.join(backendDir, 'dist', 'src', 'main.js');
 const backendMainJs = path.join(backendDir, 'dist', 'main.js');
 
 if (!fs.existsSync(frontendIndexHtml)) {
@@ -46,12 +47,19 @@ if (frontendSize === 0) {
 }
 console.log(`✅ Frontend index.html verified successfully (${frontendSize} bytes).`);
 
-if (!fs.existsSync(backendMainJs)) {
-  console.error(`❌ ERROR: Backend build file is missing at: ${backendMainJs}`);
+let resolvedBackendMainJs = null;
+if (fs.existsSync(backendMainJsSrc)) {
+  resolvedBackendMainJs = backendMainJsSrc;
+} else if (fs.existsSync(backendMainJs)) {
+  resolvedBackendMainJs = backendMainJs;
+}
+
+if (!resolvedBackendMainJs) {
+  console.error(`❌ ERROR: Backend build file is missing! Checked: ${backendMainJs} and ${backendMainJsSrc}`);
   process.exit(1);
 }
 
-const backendSize = fs.statSync(backendMainJs).size;
+const backendSize = fs.statSync(resolvedBackendMainJs).size;
 if (backendSize === 0) {
   console.error(`❌ ERROR: Backend main.js is empty!`);
   process.exit(1);
