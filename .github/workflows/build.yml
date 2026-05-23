@@ -52,6 +52,7 @@ jobs:
 
       - name: Update Package Version for Dev/Beta
         working-directory: backend
+        shell: bash
         run: |
           BASE_VERSION=$(node -p "require('./package.json').version")
           if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
