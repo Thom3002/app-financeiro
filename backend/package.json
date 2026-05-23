@@ -97,6 +97,7 @@
     "files": [
       "!**/*",
       "desktop/main.js",
+      "desktop/preload.js",
       "dist/**/*",
       "package.json",
       "node_modules/**/*"
