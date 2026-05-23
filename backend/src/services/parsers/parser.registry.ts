@@ -1,4 +1,15 @@
-import { parseC6Csv, ParsedTransaction } from './c6.parser';
+import { parseC6Csv } from './c6.parser';
+import { parseBradescoCsv } from './bradesco.parser';
+
+export interface ParsedTransaction {
+  id: string;
+  data: string;
+  titulo: string;
+  descricao: string;
+  valor: number;
+  banco: string;
+  account_type: 'CHECKING' | 'CREDIT_CARD';
+}
 
 export interface ParserResult {
   transactions: ParsedTransaction[];
@@ -17,10 +28,16 @@ const SUPPORTED_BANKS: BankInfo[] = [
     nome: 'C6 Bank',
     descricao: 'Extrato de conta corrente C6 Bank (CSV)',
   },
+  {
+    id: 'BRADESCO',
+    nome: 'Bradesco',
+    descricao: 'Extrato Bradesco - Conta Corrente ou Cartão de Crédito (CSV)',
+  },
 ];
 
 const PARSERS: Record<string, (csv: string) => ParserResult> = {
   C6: parseC6Csv,
+  BRADESCO: parseBradescoCsv,
 };
 
 export function getSupportedBanks(): BankInfo[] {

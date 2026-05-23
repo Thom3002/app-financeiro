@@ -25,6 +25,9 @@ export class Transaction {
   @Column({ type: 'varchar', length: 50 })
   banco: string;
 
+  @Column({ type: 'varchar', length: 50, default: 'CHECKING' })
+  account_type: string;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   categoria: string | null;
 

@@ -63,6 +63,7 @@ export class ImportService {
       tx.descricao = t.descricao;
       tx.valor = t.valor;
       tx.banco = t.banco;
+      tx.account_type = t.account_type;
       tx.categoria = classification.categoria;
       tx.subcategoria = classification.subcategoria;
       tx.matched_rule_id = classification.matched_rule_id;
