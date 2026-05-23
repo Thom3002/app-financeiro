@@ -17,7 +17,8 @@
     "test:cov": "jest --coverage",
     "start:electron": "npm run build && electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "prepare": "cd .. && husky backend/.husky"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
@@ -39,11 +40,13 @@
     "@nestjs/schematics": "^10.1.0",
     "@nestjs/testing": "^10.4.0",
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^1.4.11",
     "@types/node": "^20.14.0",
     "cross-env": "^10.1.0",
     "electron": "^32.0.0",
     "electron-builder": "^26.8.1",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.0",
     "ts-loader": "^9.5.1",
@@ -58,15 +61,19 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/test"
+    ],
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "src/**/*.(t|j)s"
     ],
-    "coverageDirectory": "../coverage",
+    "coverageDirectory": "./coverage",
     "testEnvironment": "node"
   },
   "main": "desktop/main.js",

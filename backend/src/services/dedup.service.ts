@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
-import { ParsedTransaction } from './parsers/c6.parser';
+import { ParsedTransaction } from './parsers/parser.registry';
 
 export interface DedupResult {
   newTransactions: ParsedTransaction[];
