@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main # Dispara toda vez que você enviar código para a branch main
+      - dev  # Dispara toda vez que você enviar código para a branch dev
     tags:
       - 'v*' # Mantém suporte para as tags de versão final
 
@@ -49,6 +50,20 @@ jobs:
         working-directory: backend
         run: npm run test
 
+      - name: Update Package Version for Dev/Beta
+        working-directory: backend
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            NEW_VERSION="${BASE_VERSION}-dev.${{ github.run_number }}"
+            echo "Setting dev version to $NEW_VERSION"
+            npm version $NEW_VERSION --no-git-tag-version
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            NEW_VERSION="${BASE_VERSION}-beta.${{ github.run_number }}"
+            echo "Setting beta version to $NEW_VERSION"
+            npm version $NEW_VERSION --no-git-tag-version
+          fi
+
       - name: Build Electron App
         working-directory: backend
         env:
@@ -69,7 +84,7 @@ jobs:
     # Roda DEPOIS que os dois builds (Mac e Windows) terminaram com sucesso
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/tags/')
 
     steps:
       - name: Download all build artifacts
@@ -78,12 +93,24 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Dev Release
+        uses: softprops/action-gh-release@v1
+        if: github.ref == 'refs/heads/dev'
+        with:
+          name: "Dev 1.1.${{ github.run_number }}"
+          tag_name: "dev-1.1.${{ github.run_number }}"
+          prerelease: true
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/**/*Setup*.exe
+            artifacts/**/*.dmg
+
       - name: Beta Release
         uses: softprops/action-gh-release@v1
         if: github.ref == 'refs/heads/main'
         with:
-          name: "Beta 1.0.${{ github.run_number }}"
-          tag_name: "beta-1.0.${{ github.run_number }}"
+          name: "Beta 1.1.${{ github.run_number }}"
+          tag_name: "beta-1.1.${{ github.run_number }}"
           prerelease: true
           fail_on_unmatched_files: false
           files: |
