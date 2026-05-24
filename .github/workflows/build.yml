@@ -1,12 +1,12 @@
-name: Draft Beta Releases
+name: Build & Release
 
 on:
   push:
     branches:
-      - main # Dispara toda vez que você enviar código para a branch main
-      - dev  # Dispara toda vez que você enviar código para a branch dev
+      - main  # gera Beta release
+      - dev   # gera Dev release (prerelease)
     tags:
-      - 'v*' # Mantém suporte para as tags de versão final
+      - 'v*'  # release oficial
 
 permissions:
   contents: write
@@ -14,7 +14,6 @@ permissions:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
@@ -26,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0 # Node atualizado para suportar o electron-builder
+          node-version: 22.12.0
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
@@ -57,17 +56,13 @@ jobs:
           BASE_VERSION=$(node -p "require('./package.json').version")
           if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             NEW_VERSION="${BASE_VERSION}-dev.${{ github.run_number }}"
-            echo "Setting dev version to $NEW_VERSION"
+            echo "Setting dev version: $NEW_VERSION"
             npm version $NEW_VERSION --no-git-tag-version
           elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
             NEW_VERSION="${BASE_VERSION}-beta.${{ github.run_number }}"
-            echo "Setting beta version to $NEW_VERSION"
+            echo "Setting beta version: $NEW_VERSION"
             npm version $NEW_VERSION --no-git-tag-version
           fi
-
-      - name: Rebuild native modules for Electron
-        working-directory: backend
-        run: npm run electron:rebuild
 
       - name: Build Electron App
         working-directory: backend
@@ -75,7 +70,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist
 
-      # Salva os artefatos de cada OS para o job de release coletar depois
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -86,7 +80,6 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    # Roda DEPOIS que os dois builds (Mac e Windows) terminaram com sucesso
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/tags/')
@@ -98,7 +91,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Dev Release
+      - name: Dev Release (branch dev)
         uses: softprops/action-gh-release@v1
         if: github.ref == 'refs/heads/dev'
         with:
@@ -110,7 +103,7 @@ jobs:
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
 
-      - name: Beta Release
+      - name: Beta Release (branch main)
         uses: softprops/action-gh-release@v1
         if: github.ref == 'refs/heads/main'
         with:
@@ -122,7 +115,7 @@ jobs:
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
 
-      - name: Official Release
+      - name: Official Release (tag)
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:

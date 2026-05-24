@@ -1,22 +1,21 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+    // Versão
     getVersion: () => ipcRenderer.invoke('get-version'),
+
+    // Canal de atualização: false = prod, true = prerelease/dev
+    getAllowPrerelease: () => ipcRenderer.invoke('get-allow-prerelease'),
+    setAllowPrerelease: (value) => ipcRenderer.invoke('set-allow-prerelease', value),
+
+    // Updater
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-    downloadUpdate: () => ipcRenderer.invoke('download-update'),
     quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
-    getDevSettings: () => ipcRenderer.invoke('get-dev-settings'),
-    saveDevSettings: (settings) => ipcRenderer.invoke('save-dev-settings', settings),
-    startGitHubAuth: () => ipcRenderer.invoke('start-github-auth'),
-    logoutGitHub: () => ipcRenderer.invoke('logout-github'),
+
+    // Listener de eventos do updater
     onUpdateEvent: (callback) => {
-        const subscription = (event, value) => callback(value);
+        const subscription = (_event, value) => callback(value);
         ipcRenderer.on('update-event', subscription);
         return () => ipcRenderer.removeListener('update-event', subscription);
     },
-    onGitHubAuthEvent: (callback) => {
-        const subscription = (event, value) => callback(value);
-        ipcRenderer.on('github-auth-event', subscription);
-        return () => ipcRenderer.removeListener('github-auth-event', subscription);
-    }
 });

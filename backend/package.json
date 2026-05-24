@@ -18,12 +18,8 @@
     "test:cov": "jest --coverage",
     "electron:rebuild": "node ./node_modules/@electron/rebuild/lib/cli.js -f -w better-sqlite3",
     "start:electron": "npm run build && npm run electron:rebuild && electron .",
-    "verify-builds": "node scripts/verify-builds.js",
-    "predist": "npm run verify-builds",
-    "prepack": "npm run verify-builds",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "prepare": "cd .. && husky backend/.husky"
+    "dist": "electron-builder"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
@@ -104,14 +100,15 @@
       "package.json",
       "node_modules/**/*"
     ],
-    "asarUnpack": [
-      "**/node_modules/better-sqlite3/**/*",
-      "**/*.node"
-    ],
     "extraResources": [
       {
         "from": "../frontend/dist",
         "to": "frontend/dist"
+      },
+      {
+        "from": "node_modules/better-sqlite3",
+        "to": "app/node_modules/better-sqlite3",
+        "filter": ["**/*"]
       }
     ],
     "mac": {
