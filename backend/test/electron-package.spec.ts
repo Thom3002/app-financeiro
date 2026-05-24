@@ -2,19 +2,28 @@
  * Electron Package Integrity Tests
  *
  * These tests guard against regressions that cause the packaged Electron app to
- * open a blank/empty window. The root cause in the past was that desktop/preload.js
- * was NOT listed in the electron-builder `files` array inside package.json, so the
- * preload script was missing from the ASAR bundle and the renderer window failed
- * to initialize, producing an empty HTML page.
+ * open a blank/empty window. Two root causes have been identified and fixed:
+ *
+ * Bug 1 — Missing preload.js in electron-builder files (commit fix(electron): add missing preload.js)
+ *   desktop/preload.js was added to the project but NOT to the electron-builder `files`
+ *   array, so the ASAR bundle was shipped without it. Electron silently fails when the
+ *   preload path cannot be resolved, producing an empty HTML page.
+ *
+ * Bug 2 — Native .node binary packed inside ASAR (this fix)
+ *   better-sqlite3 is a native C++ addon that the OS must load via dlopen(). Files
+ *   inside an ASAR archive are virtual — dlopen() cannot open them from a path inside
+ *   .asar. Without `asarUnpack`, the binary ends up inside app.asar and the TypeORM
+ *   connection fails immediately, so the NestJS backend never starts, and the Electron
+ *   window opens a blank page (ERR_CONNECTION_REFUSED → empty <html><head></head><body>).
  *
  * Passing all tests here guarantees that:
  *   1. All Electron desktop source files exist.
- *   2. The electron-builder `files` list in package.json includes every file
- *      that Electron references at runtime (main.js + preload.js).
- *   3. The frontend Vite build exists and is non-trivial (has JS + CSS assets).
- *   4. The frontend index.html produced by Vite actually references the bundled
- *      assets (i.e., the build is not a bare skeleton).
- *   5. The backend NestJS dist exists.
+ *   2. The electron-builder `files` list includes main.js + preload.js.
+ *   3. `asarUnpack` is configured for better-sqlite3 and all *.node binaries.
+ *   4. `extraResources` includes the frontend/dist build.
+ *   5. The frontend Vite build is non-trivial (has JS + CSS assets).
+ *   6. The frontend index.html references the bundled assets.
+ *   7. The backend NestJS dist exists and is non-empty.
  */
 
 import * as fs from 'fs';
@@ -84,11 +93,11 @@ describe('Electron Package Integrity', () => {
     });
 
     /**
-     * REGRESSION TEST: This was the bug that caused the blank window.
-     * desktop/preload.js was added to the project but NOT to the electron-builder
-     * "files" list, so it was excluded from the ASAR bundle.
+     * REGRESSION TEST (Bug 1): preload.js was added to the project but NOT to
+     * the electron-builder "files" list, so it was excluded from the ASAR bundle,
+     * causing the renderer window to fail initialization (blank window).
      */
-    it('build.files deve incluir desktop/preload.js (bug: tela branca no app packaged)', () => {
+    it('build.files deve incluir desktop/preload.js (regressão bug 1: tela branca)', () => {
       const included = electronFiles.some(
         f => f === 'desktop/preload.js' || f === 'desktop/**/*' || f === 'desktop/*'
       );
@@ -102,6 +111,37 @@ describe('Electron Package Integrity', () => {
       expect(included).toBe(true);
     });
 
+    /**
+     * REGRESSION TEST (Bug 2): Native .node binaries CANNOT be loaded by dlopen()
+     * from inside an ASAR archive (virtual filesystem). Without asarUnpack, the
+     * better-sqlite3 binary ends up inside app.asar and TypeORM fails to connect,
+     * preventing the NestJS backend from starting → Electron loads blank page.
+     *
+     * asarUnpack tells electron-builder to keep these files on the real filesystem
+     * at app.asar.unpacked/ and automatically rebuilds them for Electron's ABI.
+     */
+    it('build.asarUnpack deve incluir better-sqlite3 (regressão bug 2: tela branca por .node dentro do ASAR)', () => {
+      const asarUnpack: string[] = pkgJson?.build?.asarUnpack ?? [];
+      expect(Array.isArray(asarUnpack)).toBe(true);
+      expect(asarUnpack.length).toBeGreaterThan(0);
+
+      const coversBetterSqlite3 = asarUnpack.some(
+        pattern =>
+          pattern.includes('better-sqlite3') ||
+          pattern.includes('node_modules/**') ||
+          pattern === '**/*.node'
+      );
+      expect(coversBetterSqlite3).toBe(true);
+    });
+
+    it('build.asarUnpack deve incluir arquivos *.node para cobrir todos os módulos nativos', () => {
+      const asarUnpack: string[] = pkgJson?.build?.asarUnpack ?? [];
+      const coversNodeFiles = asarUnpack.some(
+        pattern => pattern.includes('*.node') || pattern.includes('**/*.node')
+      );
+      expect(coversNodeFiles).toBe(true);
+    });
+
     it('build.extraResources deve incluir o frontend/dist', () => {
       const extraResources: any[] = pkgJson?.build?.extraResources ?? [];
       const hasFrontend = extraResources.some(
@@ -109,7 +149,18 @@ describe('Electron Package Integrity', () => {
       );
       expect(hasFrontend).toBe(true);
     });
+
+    it('build.extraResources NÃO deve mais ter entrada manual do better-sqlite3 (substituído por asarUnpack)', () => {
+      const extraResources: any[] = pkgJson?.build?.extraResources ?? [];
+      const hasBetterSqlite3 = extraResources.some(
+        r => typeof r === 'object' && r.from && r.from.includes('better-sqlite3')
+      );
+      // This was a misguided fix that didn't resolve the module path correctly.
+      // asarUnpack is the correct approach.
+      expect(hasBetterSqlite3).toBe(false);
+    });
   });
+
 
   // ─── 3. Frontend build integrity ─────────────────────────────────────────────
 

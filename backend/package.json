@@ -104,17 +104,14 @@
       "package.json",
       "node_modules/**/*"
     ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*",
+      "**/*.node"
+    ],
     "extraResources": [
       {
         "from": "../frontend/dist",
         "to": "frontend/dist"
-      },
-      {
-        "from": "node_modules/better-sqlite3",
-        "to": "app/node_modules/better-sqlite3",
-        "filter": [
-          "**/*"
-        ]
       }
     ],
     "mac": {
