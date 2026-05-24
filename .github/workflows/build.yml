@@ -65,6 +65,10 @@ jobs:
             npm version $NEW_VERSION --no-git-tag-version
           fi
 
+      - name: Rebuild native modules for Electron
+        working-directory: backend
+        run: npm run electron:rebuild
+
       - name: Build Electron App
         working-directory: backend
         env:

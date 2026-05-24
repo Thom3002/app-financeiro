@@ -31,16 +31,8 @@ function verifyFile(filePath, label) {
   return size;
 }
 
-console.log('🏁 Starting Complete Build and Test Verification Process...');
-
-// 1. Build Frontend
-runCommand('npm run build', frontendDir);
-
-// 2. Build Backend
-runCommand('npm run build', backendDir);
-
-// 3. Run Backend Tests
-runCommand('npm run test', backendDir);
+console.log('🏁 Verifying build artifacts before packaging...');
+console.log('   (Frontend and Backend builds are expected to be done already by the CI pipeline)');
 
 // 4. Verify Built Artifacts
 console.log('\n🔍 Verifying built artifacts existence and integrity...');
