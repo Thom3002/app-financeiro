@@ -1,3 +1,2 @@
 #!/bin/sh
-cd backend
-npm run verify-builds
+cd backend && npm run test

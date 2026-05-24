@@ -77,6 +77,8 @@ jobs:
           path: |
             backend/release/**/*Setup*.exe
             backend/release/**/*.dmg
+            backend/release/latest-mac.yml
+            backend/release/latest.yml
           if-no-files-found: ignore
 
   release:
@@ -102,6 +104,8 @@ jobs:
           files: |
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
+            artifacts/latest-mac.yml
+            artifacts/latest.yml
 
       - name: Beta Release (branch main)
         uses: softprops/action-gh-release@v1
@@ -114,6 +118,8 @@ jobs:
           files: |
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
+            artifacts/latest-mac.yml
+            artifacts/latest.yml
 
       - name: Official Release (tag)
         uses: softprops/action-gh-release@v1
@@ -124,3 +130,5 @@ jobs:
           files: |
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
+            artifacts/latest-mac.yml
+            artifacts/latest.yml

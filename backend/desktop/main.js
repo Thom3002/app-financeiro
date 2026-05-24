@@ -7,10 +7,23 @@ const { autoUpdater } = require('electron-updater');
 // Caminho do arquivo de config persistente
 const configPath = path.join(app.getPath('userData'), 'app-config.json');
 
+function isPrereleaseVersion(version) {
+    return version && (version.includes('beta') || version.includes('dev'));
+}
+
 function getConfig() {
-    if (!fs.existsSync(configPath)) return { allowPrerelease: false };
-    try { return JSON.parse(fs.readFileSync(configPath, 'utf8')); }
-    catch { return { allowPrerelease: false }; }
+    const defaultAllow = isPrereleaseVersion(app.getVersion());
+    if (!fs.existsSync(configPath)) return { allowPrerelease: defaultAllow };
+    try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.allowPrerelease === undefined) {
+            config.allowPrerelease = defaultAllow;
+        }
+        return config;
+    }
+    catch {
+        return { allowPrerelease: defaultAllow };
+    }
 }
 
 function saveConfig(config) {
@@ -112,7 +125,11 @@ function setupIpcHandlers() {
             const result = await autoUpdater.checkForUpdates();
             return { success: true, result };
         } catch (e) {
-            return { success: false, error: e.message };
+            let errorMsg = e.message;
+            if (errorMsg.includes('Unable to find latest version on GitHub')) {
+                errorMsg = 'Nenhuma versão de produção (estável) encontrada no GitHub. Ative o canal de Desenvolvimento (Beta) nas configurações para receber atualizações.';
+            }
+            return { success: false, error: errorMsg };
         }
     });
 
@@ -137,8 +154,13 @@ function setupAutoUpdater() {
     autoUpdater.on('update-not-available', () =>
         sendToRenderer('update-event', { status: 'not-available', message: 'Você já está na versão mais recente.' }));
 
-    autoUpdater.on('error', (err) =>
-        sendToRenderer('update-event', { status: 'error', message: `Erro: ${err.message}` }));
+    autoUpdater.on('error', (err) => {
+        let msg = err.message;
+        if (msg.includes('Unable to find latest version on GitHub')) {
+            msg = 'Nenhuma versão de produção (estável) encontrada no GitHub. Se você estiver testando, ative "Receber versões de Desenvolvimento (Beta)" nas configurações.';
+        }
+        sendToRenderer('update-event', { status: 'error', message: `Erro: ${msg}` });
+    });
 
     autoUpdater.on('download-progress', (p) =>
         sendToRenderer('update-event', {
