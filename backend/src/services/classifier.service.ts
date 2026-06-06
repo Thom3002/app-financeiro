@@ -183,11 +183,14 @@ export class ClassifierService {
 
   /**
    * Detect conflicting rules: finds existing rules whose regex can match
-   * the same transactions as the given regex pattern.
+   * the same transactions as the given regex pattern AND point to a
+   * different category/subcategory (same destination = not a real conflict).
    */
   async detectConflicts(
     newRegex: string,
     excludeRuleId?: string,
+    newCategoria?: string,
+    newSubcategoria?: string | null,
   ): Promise<{
     conflicts: {
       rule: ClassificationRule;
@@ -222,6 +225,15 @@ export class ClassifierService {
     // Check overlap with each existing rule
     for (const rule of rules) {
       if (excludeRuleId && rule.id === excludeRuleId) continue;
+
+      // Skip if both rules point to the same destination — not a real conflict
+      if (
+        newCategoria &&
+        rule.categoria === newCategoria &&
+        (rule.subcategoria || null) === (newSubcategoria || null)
+      ) {
+        continue;
+      }
 
       let ruleRe: RegExp;
       try {

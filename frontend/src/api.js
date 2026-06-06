@@ -37,6 +37,7 @@ export const api = {
         return request(`/import/execute?banco=${banco}`, { method: 'POST', body: fd });
     },
     getImportHistory: () => request('/import/history'),
+    deleteImport: (id) => request(`/import/${id}`, { method: 'DELETE' }),
 
     // Transactions
     getTransactions: (params = {}) => {

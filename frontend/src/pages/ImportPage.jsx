@@ -16,10 +16,19 @@ export default function ImportPage() {
     const [error, setError] = useState('');
     const [dragOver, setDragOver] = useState(false);
     const [history, setHistory] = useState([]);
+    const [confirmDeleteImportId, setConfirmDeleteImportId] = useState(null);
+    const [deletingImportId, setDeletingImportId] = useState(null);
 
     useEffect(() => {
         api.getBanks().then(setBanks).catch(() => { });
         api.getImportHistory().then(setHistory).catch(() => { });
+
+        // Restore last selected bank and skip to upload step
+        const lastBank = localStorage.getItem('lastSelectedBank');
+        if (lastBank) {
+            setSelectedBank(lastBank);
+            setStep(1);
+        }
     }, []);
 
     const handleFileChange = (e) => {
@@ -76,6 +85,7 @@ export default function ImportPage() {
         setResult(null);
         setError('');
         setSelectedBank('');
+        localStorage.removeItem('lastSelectedBank');
     };
 
     const formatCurrency = (v) => {
@@ -127,7 +137,10 @@ export default function ImportPage() {
                     <button
                         className="btn btn-primary btn-lg"
                         disabled={!selectedBank}
-                        onClick={() => setStep(1)}
+                        onClick={() => {
+                            localStorage.setItem('lastSelectedBank', selectedBank);
+                            setStep(1);
+                        }}
                     >
                         Continuar →
                     </button>
@@ -283,6 +296,7 @@ export default function ImportPage() {
                                     <th className="text-right">Total</th>
                                     <th className="text-right">Novas</th>
                                     <th className="text-right">Duplic.</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -294,6 +308,43 @@ export default function ImportPage() {
                                         <td className="text-right">{h.total}</td>
                                         <td className="text-right valor-positivo">{h.novas}</td>
                                         <td className="text-right text-muted">{h.duplicadas}</td>
+                                        <td>
+                                            {confirmDeleteImportId === h.id ? (
+                                                <div className="btn-group">
+                                                    <button
+                                                        className="btn btn-sm btn-danger"
+                                                        disabled={deletingImportId === h.id}
+                                                        onClick={async () => {
+                                                            setDeletingImportId(h.id);
+                                                            try {
+                                                                await api.deleteImport(h.id);
+                                                                setHistory(hist => hist.filter(x => x.id !== h.id));
+                                                            } catch (e) {
+                                                                alert('Erro ao deletar: ' + e.message);
+                                                            }
+                                                            setDeletingImportId(null);
+                                                            setConfirmDeleteImportId(null);
+                                                        }}
+                                                    >
+                                                        {deletingImportId === h.id ? '...' : 'Confirmar?'}
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-secondary"
+                                                        onClick={() => setConfirmDeleteImportId(null)}
+                                                    >
+                                                        Cancelar
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    className="btn btn-sm btn-danger"
+                                                    onClick={() => setConfirmDeleteImportId(h.id)}
+                                                    title="Deletar importação e transações"
+                                                >
+                                                    🗑
+                                                </button>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
+import { INTERNAL_TRANSFER_CATEGORY } from '../categories/categories.service';
 
 @Injectable()
 export class DashboardService {
@@ -12,6 +13,8 @@ export class DashboardService {
 
   async getSummary(dataInicio?: string, dataFim?: string) {
     const qb = this.txRepo.createQueryBuilder('tx');
+    // Exclude internal transfers (e.g. credit card bill payments) to avoid double-counting
+    qb.where('tx.categoria != :internal OR tx.categoria IS NULL', { internal: INTERNAL_TRANSFER_CATEGORY });
 
     if (dataInicio) qb.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb.andWhere('tx.data <= :dataFim', { dataFim });
@@ -28,6 +31,7 @@ export class DashboardService {
 
     // By category
     const qb2 = this.txRepo.createQueryBuilder('tx');
+    qb2.where('tx.categoria != :internal OR tx.categoria IS NULL', { internal: INTERNAL_TRANSFER_CATEGORY });
     if (dataInicio) qb2.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb2.andWhere('tx.data <= :dataFim', { dataFim });
 
@@ -44,6 +48,7 @@ export class DashboardService {
 
     // Biggest transactions
     const qb3 = this.txRepo.createQueryBuilder('tx');
+    qb3.where('tx.categoria != :internal OR tx.categoria IS NULL', { internal: INTERNAL_TRANSFER_CATEGORY });
     if (dataInicio) qb3.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb3.andWhere('tx.data <= :dataFim', { dataFim });
 
@@ -64,6 +69,8 @@ export class DashboardService {
 
   async getTimeline(dataInicio?: string, dataFim?: string) {
     const qb = this.txRepo.createQueryBuilder('tx');
+    // Exclude internal transfers from timeline too
+    qb.where('tx.categoria != :internal OR tx.categoria IS NULL', { internal: INTERNAL_TRANSFER_CATEGORY });
     if (dataInicio) qb.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb.andWhere('tx.data <= :dataFim', { dataFim });
 

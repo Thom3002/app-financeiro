@@ -2,10 +2,13 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
+  Param,
   Query,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ImportService } from './import.service';
@@ -48,5 +51,12 @@ export class ImportController {
   @Get('history')
   async getHistory() {
     return this.importService.getImports();
+  }
+
+  @Delete(':id')
+  async deleteImport(@Param('id') id: string) {
+    const result = await this.importService.deleteImport(id);
+    if (!result) throw new NotFoundException('Importação não encontrada.');
+    return result;
   }
 }

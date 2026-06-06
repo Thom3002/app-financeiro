@@ -117,4 +117,22 @@ export class ImportService {
   async getImports() {
     return this.logRepo.find({ order: { created_at: 'DESC' } });
   }
+
+  async deleteImport(id: string): Promise<{ deletedTransactions: number } | null> {
+    const log = await this.logRepo.findOneBy({ id });
+    if (!log) return null;
+
+    // Delete all transactions linked to this import
+    const deleteResult = await this.txRepo
+      .createQueryBuilder()
+      .delete()
+      .from('transactions')
+      .where('import_id = :id', { id })
+      .execute();
+
+    // Delete the import log itself
+    await this.logRepo.delete(id);
+
+    return { deletedTransactions: deleteResult.affected ?? 0 };
+  }
 }

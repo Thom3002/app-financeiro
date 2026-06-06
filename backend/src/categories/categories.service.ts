@@ -5,6 +5,10 @@ import { Category } from '../entities/category.entity';
 import { Transaction } from '../entities/transaction.entity';
 import { ClassificationRule } from '../entities/classification-rule.entity';
 
+/** Reserved category name used for credit card bill payments / internal transfers.
+ *  Transactions in this category are excluded from Dashboard totals. */
+export const INTERNAL_TRANSFER_CATEGORY = 'Transferência Interna';
+
 @Injectable()
 export class CategoriesService {
   constructor(
@@ -45,6 +49,47 @@ export class CategoriesService {
   }
 
   async update(id: string, data: Partial<Category>) {
+    // If name is changing, cascade to transactions and rules
+    if (data.nome) {
+      const current = await this.catRepo.findOneBy({ id });
+      if (current && current.nome !== data.nome) {
+        const oldNome = current.nome;
+        const newNome = data.nome;
+
+        // Update transactions where this is the main category
+        await this.txRepo
+          .createQueryBuilder()
+          .update(Transaction)
+          .set({ categoria: newNome })
+          .where('categoria = :oldNome', { oldNome })
+          .execute();
+
+        // Update transactions where this is the subcategory
+        await this.txRepo
+          .createQueryBuilder()
+          .update(Transaction)
+          .set({ subcategoria: newNome })
+          .where('subcategoria = :oldNome', { oldNome })
+          .execute();
+
+        // Update classification rules where this is the main category
+        await this.ruleRepo
+          .createQueryBuilder()
+          .update(ClassificationRule)
+          .set({ categoria: newNome })
+          .where('categoria = :oldNome', { oldNome })
+          .execute();
+
+        // Update classification rules where this is the subcategory
+        await this.ruleRepo
+          .createQueryBuilder()
+          .update(ClassificationRule)
+          .set({ subcategoria: newNome })
+          .where('subcategoria = :oldNome', { oldNome })
+          .execute();
+      }
+    }
+
     await this.catRepo.update(id, data);
     return this.catRepo.findOneBy({ id });
   }
@@ -99,6 +144,25 @@ export class CategoriesService {
 
     await this.catRepo.remove(cat);
     return cat;
+  }
+
+  /**
+   * Creates built-in protected categories that the system relies on.
+   * Safe to call multiple times — uses upsert semantics.
+   */
+  async seedBuiltinCategories(): Promise<void> {
+    const existing = await this.catRepo.findOne({
+      where: { nome: INTERNAL_TRANSFER_CATEGORY, parent_id: IsNull() },
+    });
+    if (!existing) {
+      await this.catRepo.save(
+        this.catRepo.create({
+          nome: INTERNAL_TRANSFER_CATEGORY,
+          cor: '#94a3b8',
+          icone: '🔄',
+        }),
+      );
+    }
   }
 
   /**

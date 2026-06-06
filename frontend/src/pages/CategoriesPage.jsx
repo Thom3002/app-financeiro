@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 
+const PROTECTED_CATEGORIES = ['Transferência Interna'];
+
 export default function CategoriesPage() {
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -72,7 +74,9 @@ export default function CategoriesPage() {
                                     <div className="btn-group">
                                         <button className="btn btn-sm btn-secondary" onClick={() => openNew(cat.id)}>+ Sub</button>
                                         <button className="btn btn-sm btn-secondary" onClick={() => openEdit(cat)}>✏️</button>
-                                        {confirmDeleteId === cat.id ? (
+                                        {PROTECTED_CATEGORIES.includes(cat.nome) ? (
+                                            <span className="badge badge-warning" title="Categoria protegida do sistema">🔒 Sistema</span>
+                                        ) : confirmDeleteId === cat.id ? (
                                             <button className="btn btn-sm btn-danger" onClick={() => remove(cat.id)}>Confirmar?</button>
                                         ) : (
                                             <button className="btn btn-sm btn-danger" onClick={() => setConfirmDeleteId(cat.id)}>🗑</button>

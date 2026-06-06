@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { CategoriesService } from './categories/categories.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,6 +18,10 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+
+  // Seed built-in protected categories
+  const categoriesService = app.get(CategoriesService);
+  await categoriesService.seedBuiltinCategories();
 
   const port = process.env.PORT || 8000;
   await app.listen(port, '0.0.0.0');

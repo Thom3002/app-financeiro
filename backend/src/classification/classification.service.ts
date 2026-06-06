@@ -242,8 +242,14 @@ export class ClassificationService {
     const { totalChanged } = await this.classifierService.reclassifyAll();
 
     // Detect conflicts AFTER creating the rule (so it's in the DB)
+    // Pass destination category so same-category rules are not flagged as conflicts
     const { conflicts: rawConflicts } =
-      await this.classifierService.detectConflicts(regex, saved.id);
+      await this.classifierService.detectConflicts(
+        regex,
+        saved.id,
+        data.categoria,
+        data.subcategoria,
+      );
 
     // Prepend the newly created rule to the conflicts list so the user
     // can reorder it relative to the existing conflicting rules
