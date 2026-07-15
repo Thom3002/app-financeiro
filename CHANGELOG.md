@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-07-15
+
+### Fixed
+- **Auto-Updater Channel Mismatch**:
+  - Fixed client auto-update search error (`No published versions on GitHub`) by duplicating release update metadata to all supported channels (`dev.yml`, `beta.yml`, `latest.yml`).
+  - Configured client `autoUpdater` instance to always query the `latest` channel as a fallback.
+
 ## [1.1.1] - 2026-07-15
 
 ### Added

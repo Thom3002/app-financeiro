@@ -122,6 +122,7 @@ if (!gotTheLock) {
     app.whenReady().then(async () => {
         const config = getDevConfig();
         autoUpdater.allowPrerelease = !!config.allowPrerelease;
+        autoUpdater.channel = 'latest';
 
         let serverUrl = '';
 
