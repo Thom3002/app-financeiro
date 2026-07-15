@@ -1,6 +1,6 @@
 {
   "name": "app-financeiro-backend",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "App Financeiro - NestJS Backend",
   "private": true,
   "repository": {

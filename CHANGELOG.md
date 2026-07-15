@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.0] - 2026-07-15
+## [1.1.1] - 2026-07-15
 
 ### Added
 - **Date Sorting for Transactions**:

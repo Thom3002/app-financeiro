@@ -1,11 +1,12 @@
-name: Draft Beta Releases
+name: Draft Beta/Dev Releases
 
 on:
   push:
     branches:
-      - main # Dispara toda vez que você enviar código para a branch main
+      - main
+      - dev
     tags:
-      - 'v*' # Mantém suporte para as tags de versão final
+      - 'v*'
 
 permissions:
   contents: write
@@ -25,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0 # Node atualizado para suportar o electron-builder
+          node-version: 22.12.0
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
@@ -45,6 +46,21 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Update Package Version for Dev/Beta
+        working-directory: backend
+        shell: bash
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            NEW_VERSION="${BASE_VERSION}-dev.${{ github.run_number }}"
+            echo "Setting dev version: $NEW_VERSION"
+            npm version $NEW_VERSION --no-git-tag-version
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            NEW_VERSION="${BASE_VERSION}-beta.${{ github.run_number }}"
+            echo "Setting beta version: $NEW_VERSION"
+            npm version $NEW_VERSION --no-git-tag-version
+          fi
+
       - name: Build Electron App
         working-directory: backend
         env:
@@ -59,32 +75,51 @@ jobs:
           path: |
             backend/release/**/*Setup*.exe
             backend/release/**/*.dmg
+            backend/release/**/*.yml
           if-no-files-found: ignore
 
   release:
-    # Roda DEPOIS que os dois builds (Mac e Windows) terminaram com sucesso
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/tags/')
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: |
+          BASE_VERSION=$(node -p "require('./backend/package.json').version")
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            echo "version=${BASE_VERSION}-dev.${{ github.run_number }}" >> $GITHUB_OUTPUT
+            echo "type=Dev" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "version=${BASE_VERSION}-beta.${{ github.run_number }}" >> $GITHUB_OUTPUT
+            echo "type=Beta" >> $GITHUB_OUTPUT
+          else
+            echo "version=${BASE_VERSION}" >> $GITHUB_OUTPUT
+            echo "type=Release" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Beta Release
+      - name: Beta/Dev Release
         uses: softprops/action-gh-release@v1
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         with:
-          name: "Beta 1.0.${{ github.run_number }}"
-          tag_name: "beta-1.0.${{ github.run_number }}"
+          name: "${{ steps.get_version.outputs.type }} ${{ steps.get_version.outputs.version }}"
+          tag_name: "v${{ steps.get_version.outputs.version }}"
           prerelease: true
           fail_on_unmatched_files: false
           files: |
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
+            artifacts/**/*.yml
 
       - name: Official Release
         uses: softprops/action-gh-release@v1
@@ -95,3 +130,4 @@ jobs:
           files: |
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
+            artifacts/**/*.yml
