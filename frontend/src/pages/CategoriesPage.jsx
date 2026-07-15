@@ -1,6 +1,20 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 
+const PRESET_COLORS = [
+    '#6366f1', // Indigo
+    '#3b82f6', // Azul
+    '#0ea5e9', // Celeste
+    '#10b981', // Verde Esmeralda
+    '#84cc16', // Verde Lima
+    '#eab308', // Amarelo
+    '#f97316', // Laranja
+    '#ef4444', // Vermelho
+    '#ec4899', // Rosa
+    '#a855f7', // Roxo
+    '#64748b', // Cinza Slate
+];
+
 export default function CategoriesPage() {
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -113,7 +127,27 @@ export default function CategoriesPage() {
                         </div>
                         <div className="form-group">
                             <label className="form-label">Cor</label>
-                            <input type="color" value={form.cor} onChange={(e) => setForm(f => ({ ...f, cor: e.target.value }))} />
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                {PRESET_COLORS.map((c) => (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '50%',
+                                            backgroundColor: c,
+                                            border: form.cor === c ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.15)',
+                                            boxShadow: form.cor === c ? '0 0 8px ' + c : 'none',
+                                            cursor: 'pointer',
+                                            transform: form.cor === c ? 'scale(1.15)' : 'none',
+                                            transition: 'all 0.15s ease',
+                                        }}
+                                        onClick={() => setForm((f) => ({ ...f, cor: c }))}
+                                        title={c}
+                                    />
+                                ))}
+                            </div>
                         </div>
                         {form.parent_id && <div className="alert alert-success text-sm">🔗 Subcategoria</div>}
                         <div className="modal-footer">

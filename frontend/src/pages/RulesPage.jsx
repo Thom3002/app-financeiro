@@ -131,6 +131,7 @@ export default function RulesPage() {
             const result = await api.reprocessRules(simForm);
             setSimResult(result);
             alert(`Reprocessamento concluído: ${result.totalChanged} transações alteradas.`);
+            window.dispatchEvent(new Event('unclassified-count-changed'));
         } catch (e) {
             alert(e.message);
         }

@@ -51,8 +51,9 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
   const lines = content.split('\n');
 
   // Detect type based on content
-  const isCreditCard = /valor\(r\$\)/i.test(csvContent);
-  const isChecking = /cr.dito\s*\(r\$\)/i.test(csvContent) || /d.bito\s*\(r\$\)/i.test(csvContent);
+  const normalizedContent = normalizeText(csvContent);
+  const isCreditCard = /valor\(r\$\)/i.test(normalizedContent);
+  const isChecking = /credito\s*\(r\$\)/i.test(normalizedContent) || /debito\s*\(r\$\)/i.test(normalizedContent);
 
   if (!isCreditCard && !isChecking) {
     return {
@@ -177,8 +178,8 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
       const parts = line.split(';');
       const dateStr = parts[0] ? parts[0].trim() : '';
 
-      // Check if dateStr matches DD/MM/YY format (e.g. 02/03/26)
-      if (/^\d{2}\/\d{2}\/\d{2}$/.test(dateStr)) {
+      // Check if dateStr matches DD/MM/YY or DD/MM/YYYY format (e.g. 02/03/26 or 02/03/2026)
+      if (/^\d{2}\/\d{2}\/(\d{2}|\d{4})$/.test(dateStr)) {
         if (parts.length >= 5) {
           const title = parts[1].trim();
           if (title.toUpperCase() === 'SALDO ANTERIOR' || title.toLowerCase().startsWith('total')) {
@@ -199,7 +200,7 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
           }
 
           const [dd, mm, yy] = dateStr.split('/');
-          const year = '20' + yy; // assuming 21st century
+          const year = yy.length === 2 ? '20' + yy : yy;
           const isoDate = `${year}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
 
           parsedTxList.push({

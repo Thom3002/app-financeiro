@@ -25,6 +25,7 @@ export class TransactionsController {
     @Query('valorMax') valorMax?: string,
     @Query('tipo') tipo?: 'entrada' | 'saida',
     @Query('somente_nao_classificados') somente_nao_classificados?: string,
+    @Query('ordem') ordem?: 'ASC' | 'DESC',
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -41,6 +42,7 @@ export class TransactionsController {
       valorMax: !isNaN(parsedValorMax) ? parsedValorMax : undefined,
       tipo,
       somente_nao_classificados: somente_nao_classificados === 'true',
+      ordem,
       page: parseInt(page || '1', 10) || 1,
       limit: parseInt(limit || '50', 10) || 50,
     };

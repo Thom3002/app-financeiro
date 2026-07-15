@@ -63,6 +63,7 @@ export default function ImportPage() {
             setResult(data);
             setStep(3);
             api.getImportHistory().then(setHistory).catch(() => { });
+            window.dispatchEvent(new Event('unclassified-count-changed'));
         } catch (e) {
             setError(e.message);
         }
@@ -76,6 +77,19 @@ export default function ImportPage() {
         setResult(null);
         setError('');
         setSelectedBank('');
+    };
+
+    const handleDelete = async (id) => {
+        if (!confirm('Tem certeza que deseja deletar esta importação? Isso excluirá permanentemente todas as transações importadas neste lote.')) {
+            return;
+        }
+        try {
+            await api.deleteImport(id);
+            api.getImportHistory().then(setHistory).catch(() => { });
+            window.dispatchEvent(new Event('unclassified-count-changed'));
+        } catch (e) {
+            alert('Erro ao deletar importação: ' + e.message);
+        }
     };
 
     const formatCurrency = (v) => {
@@ -267,7 +281,6 @@ export default function ImportPage() {
                 </div>
             )}
 
-            {/* Import History */}
             {history.length > 0 && (
                 <div className="card mt-6">
                     <div className="card-header">
@@ -283,6 +296,7 @@ export default function ImportPage() {
                                     <th className="text-right">Total</th>
                                     <th className="text-right">Novas</th>
                                     <th className="text-right">Duplic.</th>
+                                    <th className="text-right">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -294,6 +308,14 @@ export default function ImportPage() {
                                         <td className="text-right">{h.total}</td>
                                         <td className="text-right valor-positivo">{h.novas}</td>
                                         <td className="text-right text-muted">{h.duplicadas}</td>
+                                        <td className="text-right">
+                                            <button
+                                                className="btn btn-sm btn-danger"
+                                                onClick={() => handleDelete(h.id)}
+                                            >
+                                                🗑️ Deletar
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import ImportPage from './pages/ImportPage';
 import TransactionsPage from './pages/TransactionsPage';
 import RulesPage from './pages/RulesPage';
@@ -25,14 +25,31 @@ export default function App() {
     const { isVisible, toggleVisibility } = useVisibility();
     const [appVersion, setAppVersion] = useState('');
     const [updateInfo, setUpdateInfo] = useState(null); // { version, ready }
+    const location = useLocation();
 
     const isElectron = !!window.electronAPI;
 
-    useEffect(() => {
+    const fetchUnclassifiedCount = () => {
         api.getClassificationSuggestions()
             .then((data) => setUnclassifiedCount(data.totalUnclassified || 0))
             .catch(() => { });
+    };
 
+    useEffect(() => {
+        fetchUnclassifiedCount();
+    }, [location]);
+
+    useEffect(() => {
+        const handleCountChanged = () => {
+            fetchUnclassifiedCount();
+        };
+        window.addEventListener('unclassified-count-changed', handleCountChanged);
+        return () => {
+            window.removeEventListener('unclassified-count-changed', handleCountChanged);
+        };
+    }, []);
+
+    useEffect(() => {
         if (isElectron) {
             // Busca versão do app
             window.electronAPI.getVersion().then(setAppVersion).catch(console.error);

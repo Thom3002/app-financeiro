@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
+  Param,
   Query,
   UploadedFile,
   UseInterceptors,
@@ -9,6 +11,16 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ImportService } from './import.service';
+
+function decodeCsvBuffer(buffer: Buffer): string {
+  try {
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    return decoder.decode(buffer);
+  } catch {
+    const decoder = new TextDecoder('windows-1252');
+    return decoder.decode(buffer);
+  }
+}
 
 @Controller('import')
 export class ImportController {
@@ -28,7 +40,7 @@ export class ImportController {
     if (!file) throw new BadRequestException('Arquivo CSV é obrigatório.');
     if (!banco) throw new BadRequestException('Banco é obrigatório.');
 
-    const csvContent = file.buffer.toString('utf-8');
+    const csvContent = decodeCsvBuffer(file.buffer);
     return this.importService.preview(banco, csvContent);
   }
 
@@ -41,7 +53,7 @@ export class ImportController {
     if (!file) throw new BadRequestException('Arquivo CSV é obrigatório.');
     if (!banco) throw new BadRequestException('Banco é obrigatório.');
 
-    const csvContent = file.buffer.toString('utf-8');
+    const csvContent = decodeCsvBuffer(file.buffer);
     return this.importService.execute(banco, csvContent, file.originalname);
   }
 
@@ -49,4 +61,10 @@ export class ImportController {
   async getHistory() {
     return this.importService.getImports();
   }
+
+  @Delete(':id')
+  async delete(@Param('id') id: string) {
+    return this.importService.deleteImport(id);
+  }
 }
+

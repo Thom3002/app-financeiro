@@ -493,6 +493,17 @@ th {
   white-space: nowrap;
 }
 
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.sortable-header:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
 td {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
@@ -1402,3 +1413,12 @@ tr:hover td {
   justify-content: flex-end;
   gap: var(--space-3);
 }
+
+/* ============================================= */
+/*  Recharts Styling                             */
+/* ============================================= */
+
+.recharts-pie-label-text {
+  fill: var(--text-primary) !important;
+}
+

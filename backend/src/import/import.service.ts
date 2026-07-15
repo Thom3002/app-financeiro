@@ -117,4 +117,14 @@ export class ImportService {
   async getImports() {
     return this.logRepo.find({ order: { created_at: 'DESC' } });
   }
+
+  async deleteImport(importId: string) {
+    // 1. Delete all transactions belonging to this import
+    await this.txRepo.delete({ import_id: importId });
+
+    // 2. Delete the import log record itself
+    await this.logRepo.delete({ id: importId });
+
+    return { success: true };
+  }
 }

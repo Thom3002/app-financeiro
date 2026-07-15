@@ -42,6 +42,7 @@ export default function TransactionsPage() {
         busca: '',
         tipo: '',
         somente_nao_classificados: false,
+        ordem: 'DESC',
         page: 1,
         limit: 30,
     });
@@ -104,6 +105,7 @@ export default function TransactionsPage() {
             setEditingId(null);
             loadData();
             refreshCategories();
+            window.dispatchEvent(new Event('unclassified-count-changed'));
         } catch (e) {
             console.error(e);
         }
@@ -164,6 +166,7 @@ export default function TransactionsPage() {
             cancelRule();
             loadData();
             refreshCategories();
+            window.dispatchEvent(new Event('unclassified-count-changed'));
             setTimeout(() => setSuccessMsg(''), 4000);
         } catch (e) {
             alert('Erro: ' + e.message);
@@ -177,6 +180,7 @@ export default function TransactionsPage() {
             setConflicts(null);
             setSuccessMsg('✅ Prioridades atualizadas e transações reclassificadas.');
             loadData();
+            window.dispatchEvent(new Event('unclassified-count-changed'));
             setTimeout(() => setSuccessMsg(''), 4000);
         } catch (e) {
             alert('Erro: ' + e.message);
@@ -379,7 +383,12 @@ export default function TransactionsPage() {
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Data</th>
+                                    <th 
+                                        className="sortable-header" 
+                                        onClick={() => updateFilter('ordem', filters.ordem === 'ASC' ? 'DESC' : 'ASC')}
+                                    >
+                                        Data {filters.ordem === 'ASC' ? '▲' : '▼'}
+                                    </th>
                                     <th>Título</th>
                                     <th>Descrição</th>
                                     <th style={{ textAlign: 'right' }}>Valor</th>
@@ -426,6 +435,7 @@ export default function TransactionsPage() {
                                                     style={{ width: 120, padding: '4px 8px', fontSize: '0.75rem' }}
                                                     value={editValues.subcategoria}
                                                     onChange={(e) => setEditValues((v) => ({ ...v, subcategoria: e.target.value }))}
+                                                    list="subcat-list"
                                                 />
                                             ) : (
                                                 <span
@@ -463,8 +473,13 @@ export default function TransactionsPage() {
                         </table>
                     </div>
                     <datalist id="cat-list">
-                        {categories.map((c) => (
-                            <option key={c} value={c} />
+                        {allCategories.map((c) => (
+                            <option key={c.id} value={c.nome} />
+                        ))}
+                    </datalist>
+                    <datalist id="subcat-list">
+                        {getSubcategoryOptions(editValues.categoria).map((s) => (
+                            <option key={s.id} value={s.nome} />
                         ))}
                     </datalist>
 

@@ -103,6 +103,33 @@ Data;Histórico;Docto.;Crédito (R$);Débito (R$);Saldo (R$);
       })
     );
   });
+
+  it('deve parsear extrato de conta corrente com ano em 4 dígitos (YYYY)', () => {
+    const mockBradescoChecking4DigitYearCsv = `Extrato de: Ag: 2389 | Conta: 116715-4
+Data;Histórico;Docto.;Crédito (R$);Débito (R$);Saldo (R$)
+02/01/2026;TRANSF.AUTORIZ.ENTRE C/C;2389132;6.163,19; ;33.685,56
+02/01/2026;SEGURO MAIS PROTECAO;2760002; ;2,86;33.682,70
+`;
+    const result = parseBradescoCsv(mockBradescoChecking4DigitYearCsv);
+    expect(result.errors).toHaveLength(0);
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions[0]).toEqual(
+      expect.objectContaining({
+        data: '2026-01-02',
+        titulo: 'TRANSF.AUTORIZ.ENTRE C/C',
+        valor: 6163.19,
+        account_type: 'CHECKING',
+      })
+    );
+    expect(result.transactions[1]).toEqual(
+      expect.objectContaining({
+        data: '2026-01-02',
+        titulo: 'SEGURO MAIS PROTECAO',
+        valor: -2.86,
+        account_type: 'CHECKING',
+      })
+    );
+  });
 });
 
 describe('Bradesco Parser - Cartão de Crédito', () => {

@@ -13,6 +13,7 @@ export default function ClassifyPage() {
     const [suggestions, setSuggestions] = useState([]);
     const [totalUnclassified, setTotalUnclassified] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [allCategories, setAllCategories] = useState([]);
 
     // Keyword form
     const [kwKeywords, setKwKeywords] = useState('');
@@ -31,19 +32,34 @@ export default function ClassifyPage() {
     const [conflicts, setConflicts] = useState(null);
     const [successMsg, setSuccessMsg] = useState('');
 
+    const loadCategories = () => {
+        api.getCategoriesFlat().then(cats => {
+            setAllCategories(cats.filter(c => !c.parent_id));
+        }).catch(() => { });
+    };
+
+    const getSubcategoryOptions = (catName) => {
+        const cat = allCategories.find(c => c.nome === catName);
+        return cat?.children || [];
+    };
+
     const loadSuggestions = async () => {
         setLoading(true);
         try {
             const data = await api.getClassificationSuggestions();
             setSuggestions(data.suggestions || []);
             setTotalUnclassified(data.totalUnclassified || 0);
+            window.dispatchEvent(new Event('unclassified-count-changed'));
         } catch (e) {
             console.error(e);
         }
         setLoading(false);
     };
 
-    useEffect(() => { loadSuggestions(); }, []);
+    useEffect(() => {
+        loadSuggestions();
+        loadCategories();
+    }, []);
 
     const handlePreviewKeyword = async () => {
         if (!kwKeywords.trim()) return;
@@ -77,6 +93,7 @@ export default function ClassifyPage() {
             setKwSubcategoria('');
             setKwPreview(null);
             await loadSuggestions();
+            loadCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
         } catch (e) {
             alert('Erro: ' + e.message);
@@ -102,6 +119,7 @@ export default function ClassifyPage() {
             setSugCategoria('');
             setSugSubcategoria('');
             await loadSuggestions();
+            loadCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
         } catch (e) {
             alert('Erro: ' + e.message);
@@ -114,6 +132,7 @@ export default function ClassifyPage() {
             setConflicts(null);
             setSuccessMsg('✅ Prioridades atualizadas e transações reclassificadas.');
             await loadSuggestions();
+            loadCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
         } catch (e) {
             alert('Erro: ' + e.message);
@@ -168,6 +187,7 @@ export default function ClassifyPage() {
                                 placeholder="Ex: Transporte"
                                 value={kwCategoria}
                                 onChange={(e) => setKwCategoria(e.target.value)}
+                                list="classify-cat-list"
                             />
                         </div>
                         <div className="form-group" style={{ flex: 1 }}>
@@ -177,6 +197,7 @@ export default function ClassifyPage() {
                                 placeholder="Opcional"
                                 value={kwSubcategoria}
                                 onChange={(e) => setKwSubcategoria(e.target.value)}
+                                list="classify-subcat-list"
                             />
                         </div>
                     </div>
@@ -304,6 +325,7 @@ export default function ClassifyPage() {
                                                 placeholder="Categoria"
                                                 value={sugCategoria}
                                                 onChange={(e) => setSugCategoria(e.target.value)}
+                                                list="sug-cat-list"
                                                 autoFocus
                                             />
                                             <input
@@ -311,6 +333,7 @@ export default function ClassifyPage() {
                                                 placeholder="Subcategoria (opcional)"
                                                 value={sugSubcategoria}
                                                 onChange={(e) => setSugSubcategoria(e.target.value)}
+                                                list="sug-subcat-list"
                                             />
                                             <button
                                                 className="btn btn-primary"
@@ -327,6 +350,20 @@ export default function ClassifyPage() {
                     </div>
                 )}
             </div>
+            
+            {/* Datalists for autocomplete */}
+            <datalist id="classify-cat-list">
+                {allCategories.map(c => <option key={c.id} value={c.nome} />)}
+            </datalist>
+            <datalist id="classify-subcat-list">
+                {getSubcategoryOptions(kwCategoria).map(s => <option key={s.id} value={s.nome} />)}
+            </datalist>
+            <datalist id="sug-cat-list">
+                {allCategories.map(c => <option key={c.id} value={c.nome} />)}
+            </datalist>
+            <datalist id="sug-subcat-list">
+                {getSubcategoryOptions(sugCategoria).map(s => <option key={s.id} value={s.nome} />)}
+            </datalist>
         </div>
     );
 }

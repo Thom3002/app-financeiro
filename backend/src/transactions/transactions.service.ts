@@ -14,6 +14,7 @@ export interface TransactionFilters {
   valorMax?: number;
   tipo?: 'entrada' | 'saida';
   somente_nao_classificados?: boolean;
+  ordem?: 'ASC' | 'DESC';
   page?: number;
   limit?: number;
 }
@@ -80,8 +81,10 @@ export class TransactionsService {
       );
     }
 
-    qb.orderBy('tx.data', 'DESC')
-      .addOrderBy('tx.created_at', 'DESC')
+    const ordem = filters.ordem === 'ASC' ? 'ASC' : 'DESC';
+
+    qb.orderBy('tx.data', ordem)
+      .addOrderBy('tx.created_at', ordem)
       .skip(skip)
       .take(limit);
 
