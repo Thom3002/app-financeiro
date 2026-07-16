@@ -153,7 +153,14 @@ export default function SettingsPage() {
                                     type="checkbox"
                                     style={{ opacity: 0, width: 0, height: 0 }}
                                     checked={devSettings.allowPrerelease}
-                                    onChange={(e) => setDevSettings(prev => ({ ...prev, allowPrerelease: e.target.checked }))}
+                                    onChange={async (e) => {
+                                        const val = e.target.checked;
+                                        setDevSettings(prev => ({ ...prev, allowPrerelease: val }));
+                                        if (isElectron) {
+                                            await window.electronAPI.setAllowPrerelease(val);
+                                            window.electronAPI.checkForUpdates();
+                                        }
+                                    }}
                                 />
                                 <span style={{
                                     position: 'absolute',

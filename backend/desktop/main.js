@@ -293,4 +293,12 @@ function setupIpcHandlers() {
         app.exit(0);
         return { success: true };
     });
+
+    ipcMain.handle('set-allow-prerelease', (event, value) => {
+        const config = getDevConfig();
+        config.allowPrerelease = !!value;
+        saveDevConfig(config);
+        autoUpdater.allowPrerelease = !!value;
+        return { success: true };
+    });
 }

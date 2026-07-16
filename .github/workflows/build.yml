@@ -73,14 +73,23 @@ jobs:
         run: |
           cd release
           if [ -f "latest.yml" ]; then
-            cp latest.yml dev.yml
+            # beta.yml: cópia direta do latest.yml (canal beta)
             cp latest.yml beta.yml
-            echo "Copied latest.yml to dev.yml and beta.yml"
+            echo "Copied latest.yml to beta.yml"
+
+            # dev.yml: substitui o sufixo "-beta." por "-dev." no conteúdo
+            # para que o electron-updater do canal "dev" aceite a atualização
+            cp latest.yml dev.yml
+            sed -i 's/-beta\./-dev./g' dev.yml
+            echo "Created dev.yml with dev channel version"
+            echo "--- dev.yml content ---"
+            cat dev.yml
           fi
           if [ -f "latest-mac.yml" ]; then
-            cp latest-mac.yml dev-mac.yml
             cp latest-mac.yml beta-mac.yml
-            echo "Copied latest-mac.yml to dev-mac.yml and beta-mac.yml"
+            cp latest-mac.yml dev-mac.yml
+            sed -i 's/-beta\./-dev./g' dev-mac.yml
+            echo "Created dev-mac.yml with dev channel version"
           fi
 
       # Salva os artefatos de cada OS para o job de release coletar depois

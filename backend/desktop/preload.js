@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
     getDevSettings: () => ipcRenderer.invoke('get-dev-settings'),
     saveDevSettings: (settings) => ipcRenderer.invoke('save-dev-settings', settings),
+    setAllowPrerelease: (value) => ipcRenderer.invoke('set-allow-prerelease', value),
     startGitHubAuth: () => ipcRenderer.invoke('start-github-auth'),
     logoutGitHub: () => ipcRenderer.invoke('logout-github'),
     onUpdateEvent: (callback) => {

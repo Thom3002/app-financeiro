@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2026-07-15
+
+### Fixed
+- **Auto-Updater: Channel Mismatch in `dev.yml`**:
+  - Fixed `No published versions on GitHub` error caused by `dev.yml` containing `version: 1.1.2-beta.25` (channel `beta`) while the installed app runs on the `dev` channel. `electron-updater` rejects updates whose channel does not match the currently installed app's channel.
+  - The CI workflow now uses `sed` to replace the `-beta.` suffix with `-dev.` inside `dev.yml` and `dev-mac.yml`, ensuring the file content matches the channel expected by the installed app.
+
 ## [1.1.2] - 2026-07-15
 
 ### Fixed
