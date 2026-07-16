@@ -80,7 +80,7 @@ jobs:
             # dev.yml: substitui o sufixo "-beta." por "-dev." no conteúdo
             # para que o electron-updater do canal "dev" aceite a atualização
             cp latest.yml dev.yml
-            sed -i 's/-beta\./-dev./g' dev.yml
+            sed -i.bak 's/-beta\./-dev./g' dev.yml && rm -f dev.yml.bak
             echo "Created dev.yml with dev channel version"
             echo "--- dev.yml content ---"
             cat dev.yml
@@ -88,7 +88,7 @@ jobs:
           if [ -f "latest-mac.yml" ]; then
             cp latest-mac.yml beta-mac.yml
             cp latest-mac.yml dev-mac.yml
-            sed -i 's/-beta\./-dev./g' dev-mac.yml
+            sed -i.bak 's/-beta\./-dev./g' dev-mac.yml && rm -f dev-mac.yml.bak
             echo "Created dev-mac.yml with dev channel version"
           fi
 
