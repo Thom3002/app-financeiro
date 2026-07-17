@@ -73,14 +73,15 @@ jobs:
         run: |
           cd release
           if [ -f "latest.yml" ]; then
-            # beta.yml: cópia direta do latest.yml (canal beta)
+            # beta.yml: direct copy of latest.yml (beta channel)
             cp latest.yml beta.yml
             echo "Copied latest.yml to beta.yml"
 
-            # dev.yml: substitui o sufixo "-beta." por "-dev." no conteúdo
-            # para que o electron-updater do canal "dev" aceite a atualização
+            # dev.yml: replace "-beta." with "-dev." so that electron-updater
+            # on the "dev" channel accepts the update (channel must match)
+            # Using perl instead of sed -i to support both GNU (Linux) and BSD (macOS) sed
             cp latest.yml dev.yml
-            sed -i 's/-beta\./-dev./g' dev.yml
+            perl -i -pe 's/-beta\./-dev./g' dev.yml
             echo "Created dev.yml with dev channel version"
             echo "--- dev.yml content ---"
             cat dev.yml
@@ -88,7 +89,7 @@ jobs:
           if [ -f "latest-mac.yml" ]; then
             cp latest-mac.yml beta-mac.yml
             cp latest-mac.yml dev-mac.yml
-            sed -i 's/-beta\./-dev./g' dev-mac.yml
+            perl -i -pe 's/-beta\./-dev./g' dev-mac.yml
             echo "Created dev-mac.yml with dev channel version"
           fi
 
