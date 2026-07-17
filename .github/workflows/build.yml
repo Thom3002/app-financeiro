@@ -102,6 +102,8 @@ jobs:
             backend/release/**/*Setup*.exe
             backend/release/**/*.dmg
             backend/release/**/*.yml
+            !backend/release/**/app-update.yml
+            !backend/release/**/builder-debug.yml
           if-no-files-found: ignore
 
   release:
@@ -146,6 +148,8 @@ jobs:
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
             artifacts/**/*.yml
+            !artifacts/**/app-update.yml
+            !artifacts/**/builder-debug.yml
 
       - name: Official Release
         uses: softprops/action-gh-release@v1
@@ -157,3 +161,5 @@ jobs:
             artifacts/**/*Setup*.exe
             artifacts/**/*.dmg
             artifacts/**/*.yml
+            !artifacts/**/app-update.yml
+            !artifacts/**/builder-debug.yml
