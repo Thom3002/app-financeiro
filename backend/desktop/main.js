@@ -2,15 +2,26 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { autoUpdater } = require('electron-updater');
+const https = require('https');
+const { spawn } = require('child_process');
 
-// ─── Configurações do AutoUpdater ───────────────────────────────────────────
-// autoDownload=false: o usuário decide quando baixar (via botão na UI)
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
+// ─── Módulo de verificação de versão ─────────────────────────────────────────
+// Carregado do TypeScript compilado (dist/src/update/version-checker.js).
+// Incluído no bundle via "files": ["dist/**/*"] no package.json.
+let checkForUpdate = null;
+try {
+    const checker = require('../dist/src/update/version-checker');
+    checkForUpdate = checker.checkForUpdate;
+} catch (e) {
+    // Normal em desenvolvimento (antes do primeiro `npm run build`)
+    console.warn('[Electron] version-checker não disponível:', e.message);
+}
 
 // Caminho do arquivo de configuração do Desenvolvedor
 const devConfigPath = path.join(app.getPath('userData'), 'dev-config.json');
+
+// Caminho temporário para o instalador baixado (persiste entre chamadas IPC)
+let downloadedInstallerPath = null;
 
 // ─── Helpers de configuração ─────────────────────────────────────────────────
 
@@ -123,6 +134,82 @@ async function startNestApp(devPath = null) {
     }
 }
 
+// ─── Verificação de atualização via version-checker.ts ───────────────────────
+async function performUpdateCheck() {
+    const config = getDevConfig();
+    const version = app.getVersion();
+    const channel = detectChannelFromVersion(version);
+    const allowPrerelease = !!config.allowPrerelease || channel !== 'latest';
+
+    if (!checkForUpdate) {
+        return {
+            status: 'error',
+            currentVersion: version,
+            channel,
+            message: 'Módulo de verificação indisponível. Execute npm run build primeiro.',
+        };
+    }
+
+    return await checkForUpdate(version, 'Thom3002', 'app-financeiro', allowPrerelease);
+}
+
+// ─── Download de arquivo com progresso e suporte a redirecionamentos ──────────
+// O GitHub redireciona downloads de assets para a CDN (Fastly).
+// Seguimos os redirects manualmente para controlar o progresso.
+function downloadFile(url, dest, totalSize, onProgress) {
+    return new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(dest);
+        let downloaded = 0;
+        let lastPercent = -1;
+
+        const doRequest = (requestUrl) => {
+            const mod = requestUrl.startsWith('https://') ? https : http;
+            const req = mod.get(
+                requestUrl,
+                { headers: { 'User-Agent': 'app-financeiro-updater/1.0' } },
+                (res) => {
+                    // Segue redirecionamentos (GitHub usa CDN com redirect 302)
+                    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                        res.resume(); // libera memória da resposta de redirect
+                        return doRequest(res.headers.location);
+                    }
+                    if (res.statusCode !== 200) {
+                        file.destroy();
+                        return reject(new Error(`HTTP ${res.statusCode} ao baixar atualização.`));
+                    }
+                    const fileSize = totalSize || parseInt(res.headers['content-length'] || '0', 10);
+                    res.on('data', (chunk) => {
+                        downloaded += chunk.length;
+                        if (fileSize > 0) {
+                            const percent = Math.round((downloaded / fileSize) * 100);
+                            if (percent !== lastPercent) {
+                                lastPercent = percent;
+                                onProgress(percent);
+                            }
+                        }
+                    });
+                    res.pipe(file);
+                    file.on('finish', () => file.close(() => resolve(dest)));
+                },
+            );
+            req.setTimeout(60000, () => {
+                req.destroy(new Error('Timeout ao baixar atualização.'));
+            });
+            req.on('error', (err) => {
+                file.destroy();
+                fs.unlink(dest, () => {});
+                reject(err);
+            });
+        };
+
+        doRequest(url);
+        file.on('error', (err) => {
+            fs.unlink(dest, () => {});
+            reject(err);
+        });
+    });
+}
+
 // ─── App bootstrap ────────────────────────────────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -133,11 +220,7 @@ if (!gotTheLock) {
         const currentVersion = app.getVersion();
         const detectedChannel = detectChannelFromVersion(currentVersion);
 
-        // Configura canal e allowPrerelease baseado na versão instalada + config do usuário
-        autoUpdater.channel = detectedChannel;
-        autoUpdater.allowPrerelease = !!config.allowPrerelease || detectedChannel !== 'latest';
-
-        console.log(`[Electron] Versão: ${currentVersion} | Canal: ${detectedChannel} | allowPrerelease: ${autoUpdater.allowPrerelease}`);
+        console.log(`[Electron] Versão: ${currentVersion} | Canal: ${detectedChannel}`);
 
         let serverUrl = '';
 
@@ -197,21 +280,21 @@ if (!gotTheLock) {
 
         createWindow(serverUrl);
         setupIpcHandlers();
-        setupAutoUpdaterEvents();
 
-        // Verificação silenciosa 3s após iniciar (somente em produção e fora do modo dev)
-        if (app.isPackaged && !config.devMode) {
-            setTimeout(() => {
-                console.log('[Electron] Iniciando verificação automática de atualização...');
-                autoUpdater.checkForUpdates().catch(e => {
-                    console.error('[Electron] Erro na verificação automática:', e.message);
-                    sendUpdateEvent({
-                        status: 'error',
-                        message: `Não foi possível verificar atualizações automaticamente: ${e.message}`
-                    });
+        // Verificação silenciosa 3s após iniciar
+        setTimeout(async () => {
+            console.log('[Electron] Iniciando verificação automática de atualização...');
+            try {
+                const result = await performUpdateCheck();
+                sendUpdateEvent(result);
+            } catch (e) {
+                console.error('[Electron] Erro na verificação automática:', e.message);
+                sendUpdateEvent({
+                    status: 'error',
+                    message: 'Não foi possível verificar atualizações automaticamente.',
                 });
-            }, 3000);
-        }
+            }
+        }, 3000);
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) createWindow(serverUrl);
@@ -223,95 +306,7 @@ if (!gotTheLock) {
     });
 }
 
-// ─── Eventos do AutoUpdater ───────────────────────────────────────────────────
-function setupAutoUpdaterEvents() {
-    autoUpdater.on('checking-for-update', () => {
-        console.log('[Updater] Verificando atualizações...');
-
-        // electron-updater emite 'checking-for-update' mas então aborta silenciosamente
-        // quando o app não está empacotado (sem emitir not-available ou error).
-        // Resolvemos imediatamente para não deixar a UI presa.
-        if (!app.isPackaged) {
-            console.log('[Updater] App não empacotado — resolvendo estado de verificação imediatamente.');
-            setTimeout(() => {
-                sendUpdateEvent({
-                    status: 'not-available',
-                    message: 'Verificação disponível apenas na versão instalada (.exe).'
-                });
-            }, 500); // pequeno delay para a UI mostrar brevemente o "verificando..."
-            return;
-        }
-
-        sendUpdateEvent({ status: 'checking', message: 'Verificando atualizações...' });
-    });
-
-    autoUpdater.on('update-available', (info) => {
-        console.log(`[Updater] Atualização disponível: ${info.version}`);
-        sendUpdateEvent({
-            status: 'available',
-            version: info.version,
-            message: `Nova versão ${info.version} encontrada! Baixando...`
-        });
-    });
-
-    autoUpdater.on('update-not-available', (info) => {
-        console.log(`[Updater] Já na versão mais recente: ${info?.version || app.getVersion()}`);
-        sendUpdateEvent({
-            status: 'not-available',
-            version: info?.version || app.getVersion(),
-            message: 'Você já possui a versão mais recente.'
-        });
-    });
-
-    autoUpdater.on('error', (err) => {
-        console.error('[Updater] Erro:', err.message);
-
-        // Traduz erros técnicos em mensagens amigáveis
-        let userMessage = 'Não foi possível verificar atualizações.';
-        const msg = err.message || '';
-
-        if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
-            userMessage = 'Sem conexão com a internet. Verifique sua rede e tente novamente.';
-        } else if (msg.includes('ETIMEDOUT') || msg.includes('timeout')) {
-            userMessage = 'Tempo de resposta esgotado. Verifique sua conexão e tente novamente.';
-        } else if (msg.includes('ECONNREFUSED')) {
-            userMessage = 'Conexão recusada ao verificar atualizações. Tente novamente mais tarde.';
-        } else if (msg.includes('net::ERR')) {
-            userMessage = 'Erro de rede ao verificar atualizações. Tente novamente.';
-        } else if (msg.includes('404') || msg.includes('not found')) {
-            userMessage = 'Repositório de atualizações não encontrado.';
-        } else if (msg.includes('403') || msg.includes('rate limit')) {
-            userMessage = 'Muitas requisições ao GitHub. Tente novamente em alguns minutos.';
-        } else if (msg.length > 0 && msg.length < 120) {
-            userMessage = `Erro: ${msg}`;
-        }
-
-        sendUpdateEvent({ status: 'error', message: userMessage, error: msg });
-    });
-
-    autoUpdater.on('download-progress', (progressObj) => {
-        const percent = Math.round(progressObj.percent);
-        const speed = progressObj.bytesPerSecond
-            ? ` (${(progressObj.bytesPerSecond / 1024).toFixed(0)} KB/s)`
-            : '';
-        console.log(`[Updater] Download: ${percent}%${speed}`);
-        sendUpdateEvent({
-            status: 'downloading',
-            percent,
-            message: `Baixando atualização... ${percent}%${speed}`
-        });
-    });
-
-    autoUpdater.on('update-downloaded', (info) => {
-        console.log(`[Updater] Atualização ${info.version} baixada e pronta.`);
-        sendUpdateEvent({
-            status: 'downloaded',
-            version: info.version,
-            message: `Versão ${info.version} pronta! Reinicie para aplicar a atualização.`
-        });
-    });
-}
-
+// ─── Envio de eventos para o renderer ────────────────────────────────────────
 function sendUpdateEvent(payload) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-event', payload);
@@ -325,51 +320,91 @@ function setupIpcHandlers() {
         return app.getVersion();
     });
 
-    // 2. Verificar atualizações manualmente (acionado pelo botão na UI)
+    // 2. Verificar atualizações (retorna UpdateCheckResult diretamente ao chamador)
     ipcMain.handle('check-for-updates', async () => {
-        // electron-updater recusa verificar quando o app não está empacotado
-        // (mensagem: "Skip checkForUpdates because application is not packed")
-        // Nesse caso retorna null silenciosamente sem emitir nenhum evento,
-        // deixando a UI presa em "checking". Detectamos esse caso e emitimos
-        // um evento informativo manualmente.
-        if (!app.isPackaged) {
-            console.log('[Updater] App não empacotado — simulando verificação para a UI.');
-            sendUpdateEvent({
-                status: 'not-available',
-                message: 'Verificação de atualizações disponível apenas na versão instalada.'
-            });
-            return { success: true, skipped: true };
-        }
+        const version = app.getVersion();
 
         try {
-            const result = await autoUpdater.checkForUpdates();
-            // Pode retornar null mesmo em produção em alguns edge cases
-            if (!result) {
-                sendUpdateEvent({
-                    status: 'not-available',
-                    message: 'Você já possui a versão mais recente.'
-                });
-            }
-            return { success: true, result };
+            const result = await performUpdateCheck();
+            console.log(`[Updater] Verificação concluída: ${result.status} | ${result.message}`);
+            return result;
         } catch (e) {
-            console.error('[IPC check-for-updates] Erro:', e.message);
+            console.error('[Updater] Erro inesperado:', e.message);
+            return {
+                status: 'error',
+                currentVersion: version,
+                channel: detectChannelFromVersion(version),
+                message: 'Erro inesperado ao verificar atualizações. Tente novamente.',
+                error: e.message,
+            };
+        }
+    });
+
+    // 3. Download da atualização com progresso em tempo real via update-event
+    ipcMain.handle('download-update', async (event, downloadUrl, totalSize) => {
+        if (!downloadUrl || !downloadUrl.startsWith('https://github.com/')) {
+            const msg = 'URL de download inválida ou não autorizada.';
+            sendUpdateEvent({ status: 'error', message: msg });
+            return { success: false, error: msg };
+        }
+
+        const fileName = path.basename(downloadUrl.split('?')[0]);
+        const destPath = path.join(app.getPath('temp'), fileName);
+
+        console.log(`[Updater] Iniciando download: ${fileName}`);
+        sendUpdateEvent({ status: 'downloading', percent: 0, message: 'Iniciando download...' });
+
+        try {
+            await downloadFile(downloadUrl, destPath, totalSize, (percent) => {
+                const msg = percent < 100 ? `Baixando... ${percent}%` : 'Finalizando...';
+                sendUpdateEvent({ status: 'downloading', percent, message: msg });
+            });
+
+            downloadedInstallerPath = destPath;
+            console.log(`[Updater] Download concluído: ${destPath}`);
+            sendUpdateEvent({
+                status: 'downloaded',
+                message: 'Download concluído! Clique em "Reiniciar e Instalar" para atualizar.',
+            });
+            return { success: true };
+        } catch (e) {
+            console.error('[Updater] Erro no download:', e.message);
+            const userMsg = e.message.includes('HTTP 404')
+                ? 'Arquivo de atualização não encontrado. Tente novamente mais tarde.'
+                : e.message.includes('Timeout')
+                    ? 'Tempo de resposta esgotado. Verifique sua conexão e tente novamente.'
+                    : `Falha no download: ${e.message}`;
+            sendUpdateEvent({ status: 'error', message: userMsg });
             return { success: false, error: e.message };
         }
     });
 
-    // 3. Reiniciar e instalar a atualização já baixada
+    // 4. Reiniciar e instalar a atualização baixada
+    // --updated: flag NSIS que ativa instalação silenciosa e reinicia o app após concluir
     ipcMain.handle('quit-and-install', () => {
-        console.log('[Updater] Executando quitAndInstall...');
-        autoUpdater.quitAndInstall();
+        if (!downloadedInstallerPath || !fs.existsSync(downloadedInstallerPath)) {
+            console.error('[Updater] Arquivo do instalador não encontrado em:', downloadedInstallerPath);
+            sendUpdateEvent({
+                status: 'error',
+                message: 'Arquivo do instalador não encontrado. Faça o download novamente.',
+            });
+            return;
+        }
+        console.log('[Updater] Executando instalador:', downloadedInstallerPath);
+        spawn(downloadedInstallerPath, ['--updated'], {
+            detached: true,
+            stdio: 'ignore',
+        }).unref();
+        app.quit();
     });
 
-    // 4. Configurações de desenvolvedor
+    // 5. Configurações de desenvolvedor
     ipcMain.handle('get-dev-settings', () => {
         const config = getDevConfig();
         return {
             devMode: !!config.devMode,
             devPath: config.devPath || '',
-            allowPrerelease: !!config.allowPrerelease
+            allowPrerelease: !!config.allowPrerelease,
         };
     });
 
@@ -382,15 +417,6 @@ function setupIpcHandlers() {
 
         app.relaunch();
         app.exit(0);
-        return { success: true };
-    });
-
-    ipcMain.handle('set-allow-prerelease', (event, value) => {
-        const config = getDevConfig();
-        config.allowPrerelease = !!value;
-        saveDevConfig(config);
-        autoUpdater.allowPrerelease = !!value;
-        console.log(`[Updater] allowPrerelease definido como: ${!!value}`);
         return { success: true };
     });
 }

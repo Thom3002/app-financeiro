@@ -9,7 +9,9 @@ import {
   isNewerVersion,
   checkForUpdate,
   httpsGet,
+  findDownloadAsset,
   UpdateCheckResult,
+  GitHubReleaseAsset,
 } from '../src/update/version-checker';
 
 // alias para os testes de integração (sem mock)
@@ -107,6 +109,28 @@ function makeRelease(tag: string, prerelease = false) {
     prerelease,
     published_at: '2026-01-01T00:00:00Z',
     html_url: `https://github.com/Thom3002/app-financeiro/releases/tag/${tag}`,
+    assets: [] as GitHubReleaseAsset[],
+  };
+}
+
+function makeReleaseWithAssets(tag: string, prerelease = false) {
+  const ver = tag.replace(/^v/, '');
+  return {
+    ...makeRelease(tag, prerelease),
+    assets: [
+      {
+        name: `App.Financeiro.Setup.${ver}.exe`,
+        browser_download_url: `https://github.com/Thom3002/app-financeiro/releases/download/${tag}/App.Financeiro.Setup.${ver}.exe`,
+        size: 91000000,
+        content_type: 'application/octet-stream',
+      },
+      {
+        name: `App.Financeiro-${ver}-arm64.dmg`,
+        browser_download_url: `https://github.com/Thom3002/app-financeiro/releases/download/${tag}/App.Financeiro-${ver}-arm64.dmg`,
+        size: 114000000,
+        content_type: 'application/octet-stream',
+      },
+    ] as GitHubReleaseAsset[],
   };
 }
 
@@ -294,18 +318,101 @@ describe('checkForUpdate', () => {
       'https://api.github.com/repos/MeuOwner/meu-repo/releases',
     );
   });
+
+  it('deve retornar downloadUrl e downloadSize quando update disponível (win32)', async () => {
+    const releases = [makeReleaseWithAssets('v1.2.0'), makeRelease('v1.1.3')];
+    const fetcher = makeFetcher(200, JSON.stringify(releases));
+
+    const result = await checkForUpdate('1.1.3', owner, repo, false, fetcher, 'win32', 'x64');
+
+    expect(result.status).toBe('update-available');
+    expect(result.downloadUrl).toContain('.exe');
+    expect(result.downloadUrl).toContain('github.com');
+    expect(result.downloadSize).toBe(91000000);
+  });
+
+  it('deve retornar downloadUrl e downloadSize quando update disponível (darwin arm64)', async () => {
+    const releases = [makeReleaseWithAssets('v1.2.0'), makeRelease('v1.1.3')];
+    const fetcher = makeFetcher(200, JSON.stringify(releases));
+
+    const result = await checkForUpdate('1.1.3', owner, repo, false, fetcher, 'darwin', 'arm64');
+
+    expect(result.status).toBe('update-available');
+    expect(result.downloadUrl).toContain('.dmg');
+    expect(result.downloadUrl).toContain('arm64');
+    expect(result.downloadSize).toBe(114000000);
+  });
+
+  it('deve retornar downloadUrl undefined quando não há asset para a plataforma', async () => {
+    const releases = [makeRelease('v1.2.0')]; // sem assets
+    const fetcher = makeFetcher(200, JSON.stringify(releases));
+
+    const result = await checkForUpdate('1.1.3', owner, repo, false, fetcher, 'linux', 'x64');
+
+    expect(result.status).toBe('update-available');
+    expect(result.downloadUrl).toBeUndefined();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. INTEGRAÇÃO — chamadas reais à GitHub API (sem mock)
+// 4. findDownloadAsset — seleção do asset correto por plataforma
+// ─────────────────────────────────────────────────────────────────────────────
+describe('findDownloadAsset', () => {
+  const exeAsset: GitHubReleaseAsset = {
+    name: 'App.Financeiro.Setup.1.2.0.exe',
+    browser_download_url: 'https://github.com/.../App.Financeiro.Setup.1.2.0.exe',
+    size: 91000000,
+    content_type: 'application/octet-stream',
+  };
+  const dmgArm64: GitHubReleaseAsset = {
+    name: 'App.Financeiro-1.2.0-arm64.dmg',
+    browser_download_url: 'https://github.com/.../App.Financeiro-1.2.0-arm64.dmg',
+    size: 114000000,
+    content_type: 'application/octet-stream',
+  };
+  const dmgX64: GitHubReleaseAsset = {
+    name: 'App.Financeiro-1.2.0-x64.dmg',
+    browser_download_url: 'https://github.com/.../App.Financeiro-1.2.0-x64.dmg',
+    size: 113000000,
+    content_type: 'application/octet-stream',
+  };
+
+  it('deve retornar o .exe para win32', () => {
+    const result = findDownloadAsset([exeAsset, dmgArm64], 'win32', 'x64');
+    expect(result?.name).toContain('.exe');
+  });
+
+  it('deve retornar o .dmg arm64 para darwin arm64', () => {
+    const result = findDownloadAsset([exeAsset, dmgX64, dmgArm64], 'darwin', 'arm64');
+    expect(result?.name).toContain('arm64');
+  });
+
+  it('deve retornar o .dmg x64 para darwin x64', () => {
+    const result = findDownloadAsset([exeAsset, dmgX64, dmgArm64], 'darwin', 'x64');
+    expect(result?.name).toContain('x64');
+  });
+
+  it('deve retornar undefined para plataforma desconhecida (linux)', () => {
+    const result = findDownloadAsset([exeAsset, dmgArm64], 'linux', 'x64');
+    expect(result).toBeUndefined();
+  });
+
+  it('deve retornar undefined para lista de assets vazia', () => {
+    const result = findDownloadAsset([], 'win32', 'x64');
+    expect(result).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. INTEGRAÇÃO — chamadas reais à GitHub API (sem mock)
 //    Esses testes dependem de conexão com a internet.
-//    São separados em um describe próprio e têm timeout maior (15s).
+//    São separados em um describe próprio e têm timeout maior (20s).
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Integração: GitHub API (chamada real, sem mock)', () => {
   const OWNER = 'Thom3002';
   const REPO = 'app-financeiro';
 
-  // ── httpsGet ──────────────────────────────────────────────────────────────
+  // ── httpsGet ─────────────────────────────────────────────────────
 
   describe('httpsGet', () => {
     it('deve retornar HTTP 200 e um body JSON válido para a API de releases', async () => {
@@ -320,18 +427,16 @@ describe('Integração: GitHub API (chamada real, sem mock)', () => {
       expect(Array.isArray(parsed)).toBe(true);
 
       console.log(`[INTEGRAÇÃO] GitHub API retornou ${parsed.length} release(s).`);
-    }, 15000);
+    }, 20000);
 
-    it('cada release deve ter os campos essenciais: tag_name, prerelease, html_url', async () => {
+    it('cada release deve ter os campos essenciais: tag_name, prerelease, html_url, assets', async () => {
       const { statusCode, body } = await httpsGet(
         `https://api.github.com/repos/${OWNER}/${REPO}/releases`,
       );
 
       expect(statusCode).toBe(200);
-      // Tipagem forte: usamos a interface GitHubRelease para acesso seguro aos campos
-      const releases = JSON.parse(body) as Array<{ tag_name: string; prerelease: boolean; html_url: string; name: string }>;
+      const releases = JSON.parse(body) as Array<{ tag_name: string; prerelease: boolean; html_url: string; name: string; assets: GitHubReleaseAsset[] }>;
 
-      // Garante que o repo tem pelo menos uma release publicada
       expect(releases.length).toBeGreaterThan(0);
 
       const first = releases[0];
@@ -340,10 +445,11 @@ describe('Integração: GitHub API (chamada real, sem mock)', () => {
       expect(typeof first.prerelease).toBe('boolean');
       expect(typeof first.html_url).toBe('string');
       expect(first.html_url).toContain('github.com');
+      expect(Array.isArray(first.assets)).toBe(true);
 
       console.log(`[INTEGRAÇÃO] Release mais recente: ${first.tag_name} (prerelease=${first.prerelease})`);
-      console.log(`[INTEGRAÇÃO] URL: ${first.html_url}`);
-    }, 15000);
+      console.log(`[INTEGRAÇÃO] Assets: ${first.assets.map((a) => a.name).join(', ')}`);
+    }, 20000);
 
     it('deve retornar HTTP 404 para um repositório inexistente', async () => {
       const { statusCode } = await httpsGet(
@@ -352,15 +458,14 @@ describe('Integração: GitHub API (chamada real, sem mock)', () => {
 
       expect(statusCode).toBe(404);
       console.log('[INTEGRAÇÃO] 404 confirmado para repo inexistente ✓');
-    }, 15000);
+    }, 20000);
   });
 
-  // ── checkForUpdate (real) ─────────────────────────────────────────────────
+  // ── checkForUpdate (real) ──────────────────────────────────────────────
 
   describe('checkForUpdate', () => {
     it('deve retornar um status válido consultando o GitHub real', async () => {
-      // Usa versão 0.0.0 para garantir que sempre detecte update disponível
-      const result = await checkForUpdateReal('0.0.0', OWNER, REPO, true);
+      const result = await checkForUpdate('0.0.0', OWNER, REPO, true);
 
       console.log('[INTEGRAÇÃO] Resultado do checkForUpdate:');
       console.log(`  status:         ${result.status}`);
@@ -387,28 +492,42 @@ describe('Integração: GitHub API (chamada real, sem mock)', () => {
     }, 15000);
 
     it('deve retornar "update-available" com versão 0.0.0 (assume que o repo tem pelo menos 1 release)', async () => {
-      const result = await checkForUpdateReal('0.0.0', OWNER, REPO, true);
+      const result = await checkForUpdate('0.0.0', OWNER, REPO, true);
 
-      // Se o repo existe e tem releases, deve haver update
       if (result.status === 'error') {
-        // Falha de rede: pula o teste com aviso, mas não falha
         console.warn(`[INTEGRAÇÃO] Rede indisponível: ${result.message}`);
         return;
       }
 
       expect(result.status).toBe('update-available');
-      expect(result.latestVersion).toMatch(/^\d+\.\d+\.\d+/); // semver básico
+      expect(result.latestVersion).toMatch(/^\d+\.\d+\.\d+/);
       console.log(`[INTEGRAÇÃO] ✅ Update detectado: 0.0.0 → ${result.latestVersion}`);
-    }, 15000);
+    }, 20000);
+
+    it('deve retornar downloadUrl válida para Windows quando há update', async () => {
+      const result = await checkForUpdate('0.0.0', OWNER, REPO, true, undefined, 'win32', 'x64');
+
+      if (result.status === 'error') {
+        console.warn(`[INTEGRAÇÃO] Rede indisponível: ${result.message}`);
+        return;
+      }
+
+      expect(result.status).toBe('update-available');
+      expect(result.downloadUrl).toBeTruthy();
+      expect(result.downloadUrl).toMatch(/\.exe$/);
+      expect(result.downloadUrl).toContain('github.com');
+      expect(result.downloadSize).toBeGreaterThan(0);
+      console.log(`[INTEGRAÇÃO] ✅ Download URL (win32): ${result.downloadUrl}`);
+      console.log(`[INTEGRAÇÃO] ✅ Tamanho: ${((result.downloadSize ?? 0) / 1024 / 1024).toFixed(1)} MB`);
+    }, 20000);
 
     it('deve retornar "error" com mensagem amigável para repo inexistente (real)', async () => {
-      const result = await checkForUpdateReal('1.0.0', 'usuario-inexistente-xyz', 'repo-fake-abc123', false);
+      const result = await checkForUpdate('1.0.0', 'usuario-inexistente-xyz', 'repo-fake-abc123', false);
 
       expect(result.status).toBe('error');
       expect(result.message).toBeTruthy();
       expect(result.message.length).toBeGreaterThan(5);
-
       console.log(`[INTEGRAÇÃO] Mensagem de erro para repo inexistente: "${result.message}"`);
-    }, 15000);
+    }, 20000);
   });
 });

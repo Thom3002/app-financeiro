@@ -8,12 +8,20 @@ import * as https from 'https';
 
 export type UpdateChannel = 'latest' | 'beta' | 'dev';
 
+export interface GitHubReleaseAsset {
+  name: string;
+  browser_download_url: string;
+  size: number;
+  content_type: string;
+}
+
 export interface GitHubRelease {
   tag_name: string;
   name: string;
   prerelease: boolean;
   published_at: string;
   html_url: string;
+  assets: GitHubReleaseAsset[];
 }
 
 export interface UpdateCheckResult {
@@ -27,6 +35,10 @@ export interface UpdateCheckResult {
   channel: UpdateChannel;
   /** URL da release no GitHub (quando disponível) */
   releaseUrl?: string;
+  /** URL direta do instalador (.exe/.dmg) para download direto */
+  downloadUrl?: string;
+  /** Tamanho do instalador em bytes (para barra de progresso) */
+  downloadSize?: number;
   /** Mensagem descritiva para exibir ao usuário */
   message: string;
   /** Erro técnico original (para log interno) */
@@ -128,6 +140,33 @@ export function httpsGet(
   });
 }
 
+
+/**
+ * Seleciona o asset de instalação adequado para a plataforma atual.
+ * Os parâmetros platform e arch são injetáveis para facilitar testes.
+ */
+export function findDownloadAsset(
+  assets: GitHubReleaseAsset[],
+  platform: string = process.platform,
+  arch: string = process.arch,
+): GitHubReleaseAsset | undefined {
+  if (platform === 'win32') {
+    // Prefere .exe sem arm64 (instalador x64/universal)
+    return (
+      assets.find((a) => a.name.endsWith('.exe') && !a.name.toLowerCase().includes('arm64')) ??
+      assets.find((a) => a.name.endsWith('.exe'))
+    );
+  }
+  if (platform === 'darwin') {
+    // Prefere .dmg que corresponde à arquitetura atual
+    return (
+      assets.find((a) => a.name.endsWith('.dmg') && a.name.includes(arch)) ??
+      assets.find((a) => a.name.endsWith('.dmg'))
+    );
+  }
+  return undefined;
+}
+
 /**
  * Busca releases do GitHub e decide se há uma atualização disponível.
  *
@@ -136,6 +175,8 @@ export function httpsGet(
  * @param repo            Nome do repositório
  * @param allowPrerelease Se true, considera releases marcadas como pré-lançamento
  * @param fetcher         Função de HTTP substituível para testes (padrão: httpsGet)
+ * @param platform        Plataforma alvo para seleção do asset (padrão: process.platform)
+ * @param arch            Arquitetura alvo para seleção do asset (padrão: process.arch)
  */
 export async function checkForUpdate(
   currentVersion: string,
@@ -143,6 +184,8 @@ export async function checkForUpdate(
   repo: string,
   allowPrerelease = false,
   fetcher: typeof httpsGet = httpsGet,
+  platform: string = process.platform,
+  arch: string = process.arch,
 ): Promise<UpdateCheckResult> {
   const channel = detectChannel(currentVersion);
 
@@ -238,12 +281,15 @@ export async function checkForUpdate(
   const latestVersion = latest.tag_name.replace(/^v/, '');
 
   if (isNewerVersion(currentVersion, latestVersion)) {
+    const asset = findDownloadAsset(latest.assets ?? [], platform, arch);
     return {
       status: 'update-available',
       currentVersion,
       latestVersion,
       channel,
       releaseUrl: latest.html_url,
+      downloadUrl: asset?.browser_download_url,
+      downloadSize: asset?.size,
       message: `Nova versão ${latestVersion} disponível!`,
     };
   }

@@ -12,6 +12,20 @@ const UPDATE_STATUS = {
     ERROR: 'error',
 };
 
+// Mapeia o status retornado pela API (UpdateCheckResult) para o estado interno da UI
+function mapApiStatus(apiStatus) {
+    const map = {
+        'up-to-date':       UPDATE_STATUS.NOT_AVAILABLE,
+        'update-available': UPDATE_STATUS.AVAILABLE,
+        'not-available':    UPDATE_STATUS.NOT_AVAILABLE,
+        'error':            UPDATE_STATUS.ERROR,
+        'checking':         UPDATE_STATUS.CHECKING,
+        'downloading':      UPDATE_STATUS.DOWNLOADING,
+        'downloaded':       UPDATE_STATUS.DOWNLOADED,
+    };
+    return map[apiStatus] || UPDATE_STATUS.ERROR;
+}
+
 // ─── Sub-componente: Painel de Atualização ────────────────────────────────────
 
 function UpdatePanel({ isElectron }) {
@@ -20,51 +34,49 @@ function UpdatePanel({ isElectron }) {
     const [updateMsg, setUpdateMsg] = useState('');
     const [updateVersion, setUpdateVersion] = useState('');
     const [downloadPercent, setDownloadPercent] = useState(0);
-    const [allowPrerelease, setAllowPrerelease] = useState(false);
+    // Guarda o resultado completo da verificação (contém downloadUrl e downloadSize)
+    const [updateInfo, setUpdateInfo] = useState(null);
 
     useEffect(() => {
         if (!isElectron) return;
 
         window.electronAPI.getVersion().then(setVersion).catch(console.error);
 
-        window.electronAPI.getDevSettings().then((s) => {
-            setAllowPrerelease(!!s.allowPrerelease);
-        }).catch(console.error);
-
+        // Listener para eventos de progresso de download (vindos do main process)
         const removeListener = window.electronAPI.onUpdateEvent((evt) => {
-            setUpdateStatus(evt.status);
+            const uiStatus = mapApiStatus(evt.status);
+            setUpdateStatus(uiStatus);
             setUpdateMsg(evt.message || '');
-            if (evt.version) setUpdateVersion(evt.version);
+            // Salva downloadUrl/downloadSize quando update é detectado via evento (check automático)
+            if (evt.status === 'update-available') {
+                setUpdateInfo(evt);
+                if (evt.latestVersion) setUpdateVersion(evt.latestVersion);
+            }
             if (evt.percent !== undefined) setDownloadPercent(evt.percent);
         });
 
         return () => removeListener();
     }, [isElectron]);
 
-    const handleCheckForUpdates = useCallback(() => {
+    const handleCheckForUpdates = useCallback(async () => {
         if (!isElectron) return;
         setUpdateStatus(UPDATE_STATUS.CHECKING);
         setUpdateMsg('Verificando atualizações...');
+        setUpdateInfo(null);
         setUpdateVersion('');
-        window.electronAPI.checkForUpdates().catch((e) => {
+        try {
+            const result = await window.electronAPI.checkForUpdates();
+            const uiStatus = mapApiStatus(result.status);
+            setUpdateStatus(uiStatus);
+            setUpdateMsg(result.message || '');
+            if (result.status === 'update-available') {
+                setUpdateInfo(result);
+                if (result.latestVersion) setUpdateVersion(result.latestVersion);
+            }
+        } catch (e) {
             setUpdateStatus(UPDATE_STATUS.ERROR);
-            setUpdateMsg(`Erro ao iniciar verificação: ${e.message}`);
-        });
-
-        // Timeout de segurança: se o electron-updater não responder em 20s,
-        // reseta o estado para não deixar o usuário preso em "Verificando..."
-        const safetyTimer = setTimeout(() => {
-            setUpdateStatus((prev) => {
-                if (prev === UPDATE_STATUS.CHECKING) {
-                    setUpdateMsg('Não foi possível verificar. Verifique sua conexão e tente novamente.');
-                    return UPDATE_STATUS.ERROR;
-                }
-                return prev;
-            });
-        }, 20000);
-
-        // Cancela o timer se o componente receber um evento antes disso
-        return () => clearTimeout(safetyTimer);
+            setUpdateMsg(`Erro ao verificar atualizações: ${e.message}`);
+        }
     }, [isElectron]);
 
     const handleQuitAndInstall = useCallback(() => {
@@ -72,18 +84,18 @@ function UpdatePanel({ isElectron }) {
         window.electronAPI.quitAndInstall();
     }, [isElectron]);
 
-    const handleTogglePrerelease = useCallback(async (val) => {
-        setAllowPrerelease(val);
-        if (isElectron) {
-            await window.electronAPI.setAllowPrerelease(val);
-        }
-    }, [isElectron]);
+    const handleDownloadUpdate = useCallback(() => {
+        if (!isElectron || !updateInfo?.downloadUrl) return;
+        setUpdateStatus(UPDATE_STATUS.DOWNLOADING);
+        setDownloadPercent(0);
+        setUpdateMsg('Iniciando download...');
+        // O progresso vem via onUpdateEvent (status: downloading, percent)
+        window.electronAPI.downloadUpdate(updateInfo.downloadUrl, updateInfo.downloadSize);
+    }, [isElectron, updateInfo]);
 
     // ─── Estados visuais do card de update ──────────────────────────────────
 
     const isChecking = updateStatus === UPDATE_STATUS.CHECKING;
-    // AVAILABLE é transitório (autoDownload=true vai logo para DOWNLOADING);
-    // não bloqueamos o botão nesse estado para evitar loop visual
     const isDownloading = updateStatus === UPDATE_STATUS.DOWNLOADING;
     const isAvailable = updateStatus === UPDATE_STATUS.AVAILABLE;
     const isReady = updateStatus === UPDATE_STATUS.DOWNLOADED;
@@ -206,6 +218,35 @@ function UpdatePanel({ isElectron }) {
                 >
                     🔄 Reiniciar e Instalar Atualização
                 </button>
+            ) : isAvailable ? (
+                /* Update encontrado — aguarda o usuário confirmar o download */
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                        id="btn-download-update"
+                        onClick={handleDownloadUpdate}
+                        style={{
+                            flex: 1,
+                            minWidth: '160px',
+                            padding: '10px 20px',
+                            background: 'linear-gradient(135deg, #1d4ed8, #3b82f6)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '10px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '7px',
+                            transition: 'all 0.2s ease',
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+                        onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                    >
+                        📥 Baixar Atualização
+                    </button>
+                </div>
             ) : (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <button
@@ -242,9 +283,7 @@ function UpdatePanel({ isElectron }) {
                             ? '⟳ Verificando...'
                             : isDownloading
                                 ? '📥 Baixando...'
-                                : isAvailable
-                                    ? '📥 Baixando atualização...'
-                                    : '🔍 Verificar Atualizações'}
+                                : '🔍 Verificar Atualizações'}
                     </button>
 
                     {isError && (
@@ -272,61 +311,6 @@ function UpdatePanel({ isElectron }) {
                 </div>
             )}
 
-            {/* Toggle: pré-lançamentos */}
-            {isElectron && (
-                <div style={{
-                    marginTop: '20px',
-                    paddingTop: '20px',
-                    borderTop: '1px solid rgba(255,255,255,0.07)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '16px',
-                }}>
-                    <div>
-                        <p style={{ margin: '0 0 3px 0', fontSize: '13px', fontWeight: '500' }}>
-                            Versões Beta
-                        </p>
-                        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                            Receber builds de pré-lançamento (podem conter bugs)
-                        </p>
-                    </div>
-
-                    <label id="toggle-prerelease" style={{
-                        position: 'relative',
-                        display: 'inline-block',
-                        width: '46px',
-                        height: '24px',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                    }}>
-                        <input
-                            type="checkbox"
-                            style={{ opacity: 0, width: 0, height: 0 }}
-                            checked={allowPrerelease}
-                            onChange={(e) => handleTogglePrerelease(e.target.checked)}
-                        />
-                        <span style={{
-                            position: 'absolute',
-                            top: 0, left: 0, right: 0, bottom: 0,
-                            backgroundColor: allowPrerelease ? 'var(--accent-primary)' : 'rgba(255,255,255,0.12)',
-                            borderRadius: '24px',
-                            transition: '0.25s',
-                        }}>
-                            <span style={{
-                                position: 'absolute',
-                                height: '18px', width: '18px',
-                                left: allowPrerelease ? '24px' : '4px',
-                                bottom: '3px',
-                                backgroundColor: 'white',
-                                borderRadius: '50%',
-                                transition: '0.25s',
-                                boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
-                            }} />
-                        </span>
-                    </label>
-                </div>
-            )}
 
             {/* Animação de spinner via style global */}
             <style>{`
@@ -342,7 +326,8 @@ function UpdatePanel({ isElectron }) {
 // ─── Componente principal: SettingsPage ───────────────────────────────────────
 
 export default function SettingsPage() {
-    const isElectron = !!window.electronAPI;
+    // isElectron via flag síncrona — nunca precisa de await, nunca undefined em Electron
+    const isElectron = !!window.electronAPI?.isElectron;
 
     const [devSettings, setDevSettings] = useState({
         devMode: false,

@@ -1,6 +1,6 @@
 {
   "name": "app-financeiro-backend",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "App Financeiro - NestJS Backend",
   "private": true,
   "repository": {
@@ -30,7 +30,6 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "csv-parse": "^5.5.6",
-    "electron-updater": "^6.8.3",
     "multer": "^1.4.5-lts.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

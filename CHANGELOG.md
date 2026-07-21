@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.5] - 2026-07-21
+
+### Added
+- **Novo Sistema Nativo de Atualização (Substituição do `electron-updater`)**:
+  - `version-checker.ts` estendido para selecionar o asset exato (`.exe` ou `.dmg`) da Release API do GitHub, capturando a URL de download direto e o tamanho em bytes.
+  - Criado downloader nativo no processo Electron (`main.js`) usando o módulo HTTPS do Node com suporte a redirecionamento (CDN do GitHub) e relatórios de progresso em tempo real via IPC.
+  - Implementado instalador automatizado via flag NSIS (`--updated`), permitindo que a aplicação reinstale silenciosamente a nova versão sem perder dados nem exigir desinstalação prévia.
+  - Adicionada suíte de testes unitários para a função `findDownloadAsset` e testes de integração validando os downloads reais dos assets da API do GitHub.
+
+### Fixed
+- **Divergência de nomes nos arquivos YML / 404 no Download**:
+  - Resolvido problema do `electron-updater` que buscava o arquivo com hífens (`App-Financeiro-Setup...exe`) enquanto o asset gerado possuía pontos (`App.Financeiro.Setup...exe`), causando erro 404 no download.
+- **Verificação em Ambiente Local / Desenvolvimento**:
+  - Removido o bloqueio `!app.isPackaged` no `main.js`, permitindo testar a consulta e o fluxo de atualizações localmente (`npm run start:electron`).
+- **Resiliência do Preload**:
+  - `preload.js` envolvido em bloco `try/catch` com exposição da flag síncrona `isElectron: true`, impedindo falhas silenciosas de tornarem a `window.electronAPI` indisponível no React.
+
+### Changed
+- **UX da Página de Configurações**:
+  - Fluxo de atualização dividido em etapas claras: "Verificar Atualizações" → "📥 Baixar Atualização" → Progresso em Tempo Real → "🔄 Reiniciar e Instalar".
+  - Removido o step desnecessário "Prepare Update Channel Metadata" do CI (`build.yml`) e a dependência do pacote `electron-updater`.
+
 ## [1.1.4] - 2026-07-20
 
 ### Added
