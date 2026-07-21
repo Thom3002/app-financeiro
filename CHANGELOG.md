@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.4] - 2026-07-20
+
+### Added
+- **Sistema de Atualização Robusto**:
+  - Criado serviço isolado e testável `version-checker.ts` que consulta a GitHub Releases API diretamente, com suporte a canais (`latest`, `beta`, `dev`), comparação semver com build numbers (`beta.50 > beta.42`), e tratamento de todos os erros de rede com mensagens amigáveis em português.
+  - Adicionada bateria de **35 testes automatizados** (`updater.spec.ts`) cobrindo: detecção de canal, comparação de versões semver, erros HTTP (403, 404, 500), erros de rede (timeout, ENOTFOUND, JSON inválido), e testes de **integração real** que chamam a GitHub API sem mock e verificam os dados retornados.
+
+### Fixed
+- **Auto-Updater: Loop infinito de verificação**:
+  - Adicionado timeout de segurança de 20s na UI: se o `electron-updater` não responder (comum em ambiente de desenvolvimento), o estado reseta automaticamente para erro com mensagem acionável em vez de ficar preso em "Verificando...".
+- **Auto-Updater: Canal detectado automaticamente**:
+  - O `autoUpdater.channel` agora é detectado automaticamente pela versão instalada (`-beta.N` → canal `beta`, `-dev.N` → canal `dev`, versão limpa → `latest`), eliminando o canal fixo em `latest` que causava falhas em builds pré-lançamento.
+- **Auto-Updater: `allowPrerelease` automático para canais pré-release**:
+  - Builds beta e dev ativam `allowPrerelease` automaticamente, independente da configuração do usuário.
+- **Preload: Referências quebradas removidas**:
+  - Removidos `downloadUpdate`, `startGitHubAuth` e `onGitHubAuthEvent` do `preload.js`, que não tinham handlers correspondentes no `main.js`, eliminando referências silenciosamente quebradas.
+- **Feedback de erro do updater**:
+  - Erros técnicos (`ENOTFOUND`, `ETIMEDOUT`, `ECONNREFUSED`, `net::ERR_*`, 403, 404) são traduzidos para mensagens amigáveis em português no handler `error` do `electron-updater`.
+
+### Changed
+- **UI de Configurações — Painel de Atualização completamente redesenhado**:
+  - Botão manual "🔍 Verificar Atualizações" sempre visível (antes só havia verificação automática silenciosa).
+  - Estados visuais distintos: spinner animado (verificando), barra de progresso (baixando), verde (atualizado / pronto), vermelho (erro) com botão "↻ Tentar novamente".
+  - Versão atual e nova versão exibidas lado a lado quando há update disponível.
+  - Toggle de versões Beta movido para dentro do painel de atualização (contexto correto).
+  - Estado `not-available` (versão mais recente) agora é exibido visualmente em vez de ser ocultado.
+
 ## [1.1.3] - 2026-07-15
 
 ### Fixed

@@ -4,13 +4,16 @@ const fs = require('fs');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 
-// Configurações do AutoUpdater
+// ─── Configurações do AutoUpdater ───────────────────────────────────────────
+// autoDownload=false: o usuário decide quando baixar (via botão na UI)
 autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
 
 // Caminho do arquivo de configuração do Desenvolvedor
 const devConfigPath = path.join(app.getPath('userData'), 'dev-config.json');
 
-// Helper para ler configurações locais
+// ─── Helpers de configuração ─────────────────────────────────────────────────
+
 function getDevConfig() {
     if (!fs.existsSync(devConfigPath)) {
         return { devMode: false, devPath: '', allowPrerelease: false };
@@ -19,21 +22,28 @@ function getDevConfig() {
         const content = fs.readFileSync(devConfigPath, 'utf8');
         return JSON.parse(content);
     } catch (e) {
-        console.error('Erro ao ler dev-config.json:', e);
+        console.error('[Electron] Erro ao ler dev-config.json:', e);
         return { devMode: false, devPath: '', allowPrerelease: false };
     }
 }
 
-// Helper para salvar configurações locais
 function saveDevConfig(config) {
     try {
         fs.writeFileSync(devConfigPath, JSON.stringify(config, null, 2), 'utf8');
     } catch (e) {
-        console.error('Erro ao salvar dev-config.json:', e);
+        console.error('[Electron] Erro ao salvar dev-config.json:', e);
     }
 }
 
-// Helper para testar se uma porta local está rodando (usado para detectar o Vite dev server)
+// ─── Helper: detecta canal pela versão instalada ──────────────────────────────
+// Ex: "1.1.3-beta.42" → 'beta', "1.1.3-dev.5" → 'dev', "1.1.3" → 'latest'
+function detectChannelFromVersion(version) {
+    if (version.includes('-dev.')) return 'dev';
+    if (version.includes('-beta.')) return 'beta';
+    return 'latest';
+}
+
+// ─── Helper: testa se uma porta local está rodando ───────────────────────────
 function checkLocalServerRunning(port) {
     return new Promise((resolve) => {
         const req = http.get(`http://localhost:${port}`, () => {
@@ -73,7 +83,7 @@ function createWindow(url) {
     }
 }
 
-// Inicialização do Backend NestJS (Produção ou pasta Dev local)
+// ─── Inicialização do Backend NestJS ─────────────────────────────────────────
 async function startNestApp(devPath = null) {
     const userDataPath = app.getPath('userData');
     if (!fs.existsSync(userDataPath)) {
@@ -89,8 +99,7 @@ async function startNestApp(devPath = null) {
         process.env.NODE_ENV = 'development';
         console.log(`[Electron] [DEV] Carregando NestJS local de: ${devPath}`);
         console.log(`[Electron] [DEV] Banco SQLite configurado em: ${process.env.DATABASE_PATH}`);
-        
-        // Carrega o NestJS a partir da pasta do desenvolvedor (tentando dist/src/main.js ou dist/main.js)
+
         const localNestMainSrc = path.join(devPath, 'backend', 'dist', 'src', 'main.js');
         const localNestMain = path.join(devPath, 'backend', 'dist', 'main.js');
         if (fs.existsSync(localNestMainSrc)) {
@@ -103,8 +112,7 @@ async function startNestApp(devPath = null) {
         process.env.NODE_ENV = 'production';
         process.env.APP_PATH = app.getAppPath();
         console.log(`[Electron] Banco SQLite configurado em: ${process.env.DATABASE_PATH}`);
-        
-        // Carrega o NestJS interno do ASAR (tentando dist/src/main.js ou dist/main.js)
+
         const mainSrcPath = path.join(__dirname, '..', 'dist', 'src', 'main.js');
         const mainPath = path.join(__dirname, '..', 'dist', 'main.js');
         if (fs.existsSync(mainSrcPath)) {
@@ -115,49 +123,54 @@ async function startNestApp(devPath = null) {
     }
 }
 
+// ─── App bootstrap ────────────────────────────────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
 } else {
     app.whenReady().then(async () => {
         const config = getDevConfig();
-        autoUpdater.allowPrerelease = !!config.allowPrerelease;
-        autoUpdater.channel = 'latest';
+        const currentVersion = app.getVersion();
+        const detectedChannel = detectChannelFromVersion(currentVersion);
+
+        // Configura canal e allowPrerelease baseado na versão instalada + config do usuário
+        autoUpdater.channel = detectedChannel;
+        autoUpdater.allowPrerelease = !!config.allowPrerelease || detectedChannel !== 'latest';
+
+        console.log(`[Electron] Versão: ${currentVersion} | Canal: ${detectedChannel} | allowPrerelease: ${autoUpdater.allowPrerelease}`);
 
         let serverUrl = '';
 
         if (config.devMode && config.devPath) {
             console.log('[Electron] Modo Desenvolvedor Ativo.');
-            
-            // 1. Testa se o Vite dev server está rodando (porta 5173)
+
             const isViteRunning = await checkLocalServerRunning(5173);
             if (isViteRunning) {
-                console.log('[Electron] Servidor Vite de desenvolvimento detectado na porta 5173. Redirecionando...');
+                console.log('[Electron] Servidor Vite detectado na porta 5173. Redirecionando...');
                 serverUrl = 'http://localhost:5173';
             } else {
-                // 2. Se o Vite não estiver rodando, tenta rodar o NestJS local da pasta do dev
                 const localNestMainSrc = path.join(config.devPath, 'backend', 'dist', 'src', 'main.js');
                 const localNestMain = path.join(config.devPath, 'backend', 'dist', 'main.js');
-                const localMainPath = fs.existsSync(localNestMainSrc) ? localNestMainSrc : (fs.existsSync(localNestMain) ? localNestMain : null);
+                const localMainPath = fs.existsSync(localNestMainSrc)
+                    ? localNestMainSrc
+                    : (fs.existsSync(localNestMain) ? localNestMain : null);
+
                 if (localMainPath) {
                     await startNestApp(config.devPath);
-                    const port = process.env.PORT || 8000;
-                    serverUrl = `http://localhost:${port}`;
                 } else {
-                    console.error('[Electron] Modo Dev ativo mas nenhuma build local ou porta 5173 foi encontrada. Carregando modo produção.');
+                    console.error('[Electron] Modo Dev ativo mas nenhuma build local encontrada. Usando produção.');
                     await startNestApp();
-                    const port = process.env.PORT || 8000;
-                    serverUrl = `http://localhost:${port}`;
                 }
+                const port = process.env.PORT || 8000;
+                serverUrl = `http://localhost:${port}`;
             }
         } else {
-            // Modo Produção padrão
             await startNestApp();
             const port = process.env.PORT || 8000;
             serverUrl = `http://localhost:${port}`;
         }
 
-        // Função para esperar o backend estar pronto
+        // Aguarda backend ficar pronto
         const waitForBackend = (url, retries = 20) => {
             return new Promise((resolve) => {
                 const check = (attempt) => {
@@ -166,7 +179,7 @@ if (!gotTheLock) {
                         resolve();
                     }).on('error', () => {
                         if (attempt < retries) {
-                            console.log(`[Electron] Aguardando backend... (tentativa ${attempt}/${retries})`);
+                            console.log(`[Electron] Aguardando backend... (${attempt}/${retries})`);
                             setTimeout(() => check(attempt + 1), 500);
                         } else {
                             console.error('[Electron] Backend não respondeu a tempo.');
@@ -183,63 +196,118 @@ if (!gotTheLock) {
         }
 
         createWindow(serverUrl);
-
-        // Configuração dos IPC listeners e AutoUpdater
         setupIpcHandlers();
         setupAutoUpdaterEvents();
 
-        // Verifica atualizações silenciosamente 2 segundos após abrir (se em produção ou canal Beta ativo)
-        if (app.isPackaged) {
+        // Verificação silenciosa 3s após iniciar (somente em produção e fora do modo dev)
+        if (app.isPackaged && !config.devMode) {
             setTimeout(() => {
-                autoUpdater.checkForUpdates().catch(e => console.error('Erro ao buscar updates iniciais:', e));
-            }, 2000);
+                console.log('[Electron] Iniciando verificação automática de atualização...');
+                autoUpdater.checkForUpdates().catch(e => {
+                    console.error('[Electron] Erro na verificação automática:', e.message);
+                    sendUpdateEvent({
+                        status: 'error',
+                        message: `Não foi possível verificar atualizações automaticamente: ${e.message}`
+                    });
+                });
+            }, 3000);
         }
 
-        app.on('activate', function () {
+        app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) createWindow(serverUrl);
         });
     });
 
-    app.on('window-all-closed', function () {
+    app.on('window-all-closed', () => {
         if (process.platform !== 'darwin') app.quit();
     });
 }
 
-// Configura os eventos de atualização automática do electron-updater
+// ─── Eventos do AutoUpdater ───────────────────────────────────────────────────
 function setupAutoUpdaterEvents() {
     autoUpdater.on('checking-for-update', () => {
+        console.log('[Updater] Verificando atualizações...');
+
+        // electron-updater emite 'checking-for-update' mas então aborta silenciosamente
+        // quando o app não está empacotado (sem emitir not-available ou error).
+        // Resolvemos imediatamente para não deixar a UI presa.
+        if (!app.isPackaged) {
+            console.log('[Updater] App não empacotado — resolvendo estado de verificação imediatamente.');
+            setTimeout(() => {
+                sendUpdateEvent({
+                    status: 'not-available',
+                    message: 'Verificação disponível apenas na versão instalada (.exe).'
+                });
+            }, 500); // pequeno delay para a UI mostrar brevemente o "verificando..."
+            return;
+        }
+
         sendUpdateEvent({ status: 'checking', message: 'Verificando atualizações...' });
     });
 
     autoUpdater.on('update-available', (info) => {
+        console.log(`[Updater] Atualização disponível: ${info.version}`);
         sendUpdateEvent({
             status: 'available',
             version: info.version,
-            message: `Nova versão ${info.version} disponível! Baixando...`
+            message: `Nova versão ${info.version} encontrada! Baixando...`
         });
     });
 
-    autoUpdater.on('update-not-available', () => {
-        sendUpdateEvent({ status: 'not-available', message: 'Você já possui a versão mais recente.' });
+    autoUpdater.on('update-not-available', (info) => {
+        console.log(`[Updater] Já na versão mais recente: ${info?.version || app.getVersion()}`);
+        sendUpdateEvent({
+            status: 'not-available',
+            version: info?.version || app.getVersion(),
+            message: 'Você já possui a versão mais recente.'
+        });
     });
 
     autoUpdater.on('error', (err) => {
-        sendUpdateEvent({ status: 'error', message: `Erro ao buscar atualizações: ${err.message}` });
+        console.error('[Updater] Erro:', err.message);
+
+        // Traduz erros técnicos em mensagens amigáveis
+        let userMessage = 'Não foi possível verificar atualizações.';
+        const msg = err.message || '';
+
+        if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
+            userMessage = 'Sem conexão com a internet. Verifique sua rede e tente novamente.';
+        } else if (msg.includes('ETIMEDOUT') || msg.includes('timeout')) {
+            userMessage = 'Tempo de resposta esgotado. Verifique sua conexão e tente novamente.';
+        } else if (msg.includes('ECONNREFUSED')) {
+            userMessage = 'Conexão recusada ao verificar atualizações. Tente novamente mais tarde.';
+        } else if (msg.includes('net::ERR')) {
+            userMessage = 'Erro de rede ao verificar atualizações. Tente novamente.';
+        } else if (msg.includes('404') || msg.includes('not found')) {
+            userMessage = 'Repositório de atualizações não encontrado.';
+        } else if (msg.includes('403') || msg.includes('rate limit')) {
+            userMessage = 'Muitas requisições ao GitHub. Tente novamente em alguns minutos.';
+        } else if (msg.length > 0 && msg.length < 120) {
+            userMessage = `Erro: ${msg}`;
+        }
+
+        sendUpdateEvent({ status: 'error', message: userMessage, error: msg });
     });
 
     autoUpdater.on('download-progress', (progressObj) => {
+        const percent = Math.round(progressObj.percent);
+        const speed = progressObj.bytesPerSecond
+            ? ` (${(progressObj.bytesPerSecond / 1024).toFixed(0)} KB/s)`
+            : '';
+        console.log(`[Updater] Download: ${percent}%${speed}`);
         sendUpdateEvent({
             status: 'downloading',
-            percent: Math.round(progressObj.percent),
-            message: `Baixando atualização... ${Math.round(progressObj.percent)}%`
+            percent,
+            message: `Baixando atualização... ${percent}%${speed}`
         });
     });
 
     autoUpdater.on('update-downloaded', (info) => {
+        console.log(`[Updater] Atualização ${info.version} baixada e pronta.`);
         sendUpdateEvent({
             status: 'downloaded',
             version: info.version,
-            message: 'Atualização baixada! Clique para reiniciar e aplicar.'
+            message: `Versão ${info.version} pronta! Reinicie para aplicar a atualização.`
         });
     });
 }
@@ -250,28 +318,52 @@ function sendUpdateEvent(payload) {
     }
 }
 
-// Configuração dos canais IPC
+// ─── Handlers IPC ─────────────────────────────────────────────────────────────
 function setupIpcHandlers() {
-    // 1. Informações básicas de versão
+    // 1. Versão atual do app
     ipcMain.handle('get-version', () => {
         return app.getVersion();
     });
 
-    // 2. Comandos do AutoUpdater
+    // 2. Verificar atualizações manualmente (acionado pelo botão na UI)
     ipcMain.handle('check-for-updates', async () => {
+        // electron-updater recusa verificar quando o app não está empacotado
+        // (mensagem: "Skip checkForUpdates because application is not packed")
+        // Nesse caso retorna null silenciosamente sem emitir nenhum evento,
+        // deixando a UI presa em "checking". Detectamos esse caso e emitimos
+        // um evento informativo manualmente.
+        if (!app.isPackaged) {
+            console.log('[Updater] App não empacotado — simulando verificação para a UI.');
+            sendUpdateEvent({
+                status: 'not-available',
+                message: 'Verificação de atualizações disponível apenas na versão instalada.'
+            });
+            return { success: true, skipped: true };
+        }
+
         try {
             const result = await autoUpdater.checkForUpdates();
+            // Pode retornar null mesmo em produção em alguns edge cases
+            if (!result) {
+                sendUpdateEvent({
+                    status: 'not-available',
+                    message: 'Você já possui a versão mais recente.'
+                });
+            }
             return { success: true, result };
         } catch (e) {
+            console.error('[IPC check-for-updates] Erro:', e.message);
             return { success: false, error: e.message };
         }
     });
 
+    // 3. Reiniciar e instalar a atualização já baixada
     ipcMain.handle('quit-and-install', () => {
+        console.log('[Updater] Executando quitAndInstall...');
         autoUpdater.quitAndInstall();
     });
 
-    // 3. Configurações de desenvolvedor e canais de update
+    // 4. Configurações de desenvolvedor
     ipcMain.handle('get-dev-settings', () => {
         const config = getDevConfig();
         return {
@@ -288,7 +380,6 @@ function setupIpcHandlers() {
         config.allowPrerelease = !!settings.allowPrerelease;
         saveDevConfig(config);
 
-        // Reinicia o aplicativo para aplicar as novas configurações
         app.relaunch();
         app.exit(0);
         return { success: true };
@@ -299,6 +390,7 @@ function setupIpcHandlers() {
         config.allowPrerelease = !!value;
         saveDevConfig(config);
         autoUpdater.allowPrerelease = !!value;
+        console.log(`[Updater] allowPrerelease definido como: ${!!value}`);
         return { success: true };
     });
 }
