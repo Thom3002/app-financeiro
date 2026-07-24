@@ -1,6 +1,6 @@
 {
   "name": "app-financeiro-backend",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "App Financeiro - NestJS Backend",
   "private": true,
   "repository": {
@@ -16,6 +16,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "start:electron": "npm run build && electron .",
+    "rebuild:electron": "electron-builder install-app-deps",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "prepare": "cd .. && husky backend/.husky"
@@ -92,7 +93,7 @@
     ],
     "files": [
       "!**/*",
-      "desktop/main.js",
+      "desktop/**/*",
       "dist/**/*",
       "package.json",
       "node_modules/**/*"

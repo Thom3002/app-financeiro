@@ -42,18 +42,29 @@ function UpdatePanel({ isElectron }) {
 
         window.electronAPI.getVersion().then(setVersion).catch(console.error);
 
-        // Listener para eventos de progresso de download (vindos do main process)
-        const removeListener = window.electronAPI.onUpdateEvent((evt) => {
+        // Helper para processar um evento de update (reutilizado abaixo)
+        const applyUpdateEvent = (evt) => {
+            if (!evt) return;
             const uiStatus = mapApiStatus(evt.status);
             setUpdateStatus(uiStatus);
             setUpdateMsg(evt.message || '');
-            // Salva downloadUrl/downloadSize quando update é detectado via evento (check automático)
             if (evt.status === 'update-available') {
                 setUpdateInfo(evt);
                 if (evt.latestVersion) setUpdateVersion(evt.latestVersion);
             }
             if (evt.percent !== undefined) setDownloadPercent(evt.percent);
-        });
+        };
+
+        // Listener para eventos de progresso de download (vindos do main process)
+        const removeListener = window.electronAPI.onUpdateEvent(applyUpdateEvent);
+
+        // Recupera evento de update que pode ter chegado ANTES deste listener ser registrado
+        // (o main process dispara a verificação automática 3s após o boot)
+        if (window.electronAPI.getPendingUpdate) {
+            window.electronAPI.getPendingUpdate()
+                .then(applyUpdateEvent)
+                .catch(console.error);
+        }
 
         return () => removeListener();
     }, [isElectron]);
@@ -328,6 +339,8 @@ function UpdatePanel({ isElectron }) {
 export default function SettingsPage() {
     // isElectron via flag síncrona — nunca precisa de await, nunca undefined em Electron
     const isElectron = !!window.electronAPI?.isElectron;
+    // Diagnóstico: se o preload falhou, window.__preloadError conterá a mensagem de erro
+    const preloadError = window.__preloadError || null;
 
     const [devSettings, setDevSettings] = useState({
         devMode: false,
@@ -385,6 +398,28 @@ export default function SettingsPage() {
                 <h2>⚙️ Configurações do Sistema</h2>
                 <p>Gerencie atualizações de versões e canais de desenvolvimento</p>
             </div>
+
+            {/* Banner de diagnóstico: visível apenas quando o preload falhou */}
+            {preloadError && (
+                <div style={{
+                    marginBottom: '20px',
+                    padding: '14px 16px',
+                    background: 'rgba(239,68,68,0.10)',
+                    border: '1px solid rgba(239,68,68,0.35)',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    color: '#f87171',
+                    lineHeight: '1.6',
+                }}>
+                    <strong>⚠️ Erro no preload do Electron:</strong>
+                    <br />
+                    <code style={{ wordBreak: 'break-all', fontSize: '12px' }}>{preloadError}</code>
+                    <br />
+                    <span style={{ color: 'var(--text-muted)' }}>
+                        Por favor, reporte este erro ao desenvolvedor.
+                    </span>
+                </div>
+            )}
 
             {/* SEÇÃO 1: ATUALIZAÇÃO */}
             <UpdatePanel isElectron={isElectron} />

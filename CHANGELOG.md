@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.6] - 2026-07-24
+
+### Fixed
+- **Comunicação IPC e Detecção de Ambiente Electron**:
+  - Ajustada a ordem de inicialização no Electron (`main.js`) executando `setupIpcHandlers()` antes de `createWindow()`, garantindo que os receptores IPC existam antes do carregamento do frontend.
+  - Resolvida race condition no check automático de atualizações adicionando cache `pendingUpdateEvent` e método `getPendingUpdate()` para resgatar resultados disparados antes da montagem dos componentes no React.
+  - Adicionada captura de erro e exposição de `window.__preloadError` para diagnóstico imediato na UI caso ocorra falha no script de preload.
+
 ## [1.1.5] - 2026-07-21
 
 ### Added

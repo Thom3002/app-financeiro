@@ -25,9 +25,20 @@ try {
         // Configurações de desenvolvedor / canal
         getDevSettings: () => ipcRenderer.invoke('get-dev-settings'),
         saveDevSettings: (settings) => ipcRenderer.invoke('save-dev-settings', settings),
+
+        // Recupera evento de update pendente (disparado antes do renderer montar)
+        getPendingUpdate: () => ipcRenderer.invoke('get-pending-update'),
     });
+
+    console.log('[Preload] electronAPI exposto com sucesso.');
 } catch (err) {
     // Qualquer erro aqui tornaria window.electronAPI undefined —
-    // logamos explicitamente para facilitar diagnóstico em caso de falha.
+    // logamos explicitamente e armazenamos no DOM para diagnóstico sem DevTools.
     console.error('[Preload] Falha crítica ao expor electronAPI:', err);
+    try {
+        // Expõe o erro no mundo principal para o renderer detectar
+        contextBridge.exposeInMainWorld('__preloadError', String(err));
+    } catch (_) {
+        // Se até isso falhar, não há nada mais a fazer aqui
+    }
 }

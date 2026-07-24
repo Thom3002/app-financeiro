@@ -71,6 +71,8 @@ function checkLocalServerRunning(port) {
 }
 
 let mainWindow = null;
+// Cache do último evento de update enviado antes do renderer estar pronto
+let pendingUpdateEvent = null;
 
 function createWindow(url) {
     mainWindow = new BrowserWindow({
@@ -278,8 +280,11 @@ if (!gotTheLock) {
             await waitForBackend(serverUrl);
         }
 
-        createWindow(serverUrl);
+        // IMPORTANTE: setupIpcHandlers() deve ser chamado ANTES de createWindow()
+        // para garantir que os handlers IPC já existam quando o renderer invocar
+        // qualquer ipcRenderer.invoke() logo após o carregamento da página.
         setupIpcHandlers();
+        createWindow(serverUrl);
 
         // Verificação silenciosa 3s após iniciar
         setTimeout(async () => {
@@ -310,6 +315,9 @@ if (!gotTheLock) {
 function sendUpdateEvent(payload) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-event', payload);
+    } else {
+        // Renderer ainda não está pronto — armazena para enviar quando ele pedir
+        pendingUpdateEvent = payload;
     }
 }
 
@@ -398,7 +406,15 @@ function setupIpcHandlers() {
         app.quit();
     });
 
-    // 5. Configurações de desenvolvedor
+    // 5. Evento de update pendente (enviado antes do renderer estar pronto)
+    // O renderer chama isso no mount do SettingsPage para não perder o evento automático
+    ipcMain.handle('get-pending-update', () => {
+        const evt = pendingUpdateEvent;
+        pendingUpdateEvent = null; // consome o evento
+        return evt;             // null se não houver nada pendente
+    });
+
+    // 6. Configurações de desenvolvedor
     ipcMain.handle('get-dev-settings', () => {
         const config = getDevConfig();
         return {
