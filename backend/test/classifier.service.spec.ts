@@ -107,7 +107,7 @@ describe('ClassifierService', () => {
   describe('keywordsToRegex', () => {
     it('deve converter palavras-chave separadas por virgula em um padrao regex', () => {
       const regexStr = service.keywordsToRegex('uber, 99 pop, taxi');
-      expect(regexStr).toBe('(?:uber|99\\s*pop|taxi)');
+      expect(regexStr).toBe('(?:uber|99.*pop|taxi)');
     });
 
     it('deve retornar string vazia se nao houver palavras-chave', () => {
