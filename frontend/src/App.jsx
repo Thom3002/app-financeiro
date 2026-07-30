@@ -11,7 +11,7 @@ import { api } from './api';
 import { useVisibility } from './contexts/VisibilityContext';
 
 const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: '📊' },
+    { path: '/dashboard', label: 'Minha Carteira', icon: '💼' },
     { path: '/import', label: 'Importar', icon: '📥' },
     { path: '/classify', label: 'Classificar', icon: '🏷️', hasBadge: true },
     { path: '/transactions', label: 'Transações', icon: '💳' },

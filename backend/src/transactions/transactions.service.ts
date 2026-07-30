@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Like, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
+import { Category } from '../entities/category.entity';
 
 export interface TransactionFilters {
   dataInicio?: string;
@@ -24,6 +25,8 @@ export class TransactionsService {
   constructor(
     @InjectRepository(Transaction)
     private readonly txRepo: Repository<Transaction>,
+    @InjectRepository(Category)
+    private readonly catRepo: Repository<Category>,
   ) {}
 
   async findAll(filters: TransactionFilters) {
@@ -115,12 +118,18 @@ export class TransactionsService {
   }
 
   async getDistinctCategories(): Promise<string[]> {
-    const result = await this.txRepo
+    const dbCats = await this.catRepo.find({ select: ['nome'] });
+    const txCats = await this.txRepo
       .createQueryBuilder('tx')
       .select('DISTINCT tx.categoria', 'categoria')
       .where('tx.categoria IS NOT NULL')
       .getRawMany();
-    return result.map((r) => r.categoria).filter(Boolean);
+
+    const set = new Set<string>();
+    dbCats.forEach((c) => c.nome && set.add(c.nome));
+    txCats.forEach((r) => r.categoria && set.add(r.categoria));
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }
 
   async getDistinctBanks(): Promise<string[]> {

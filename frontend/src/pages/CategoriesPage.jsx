@@ -20,7 +20,7 @@ export default function CategoriesPage() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState({ nome: '', parent_id: '', cor: '#6366f1' });
+    const [form, setForm] = useState({ nome: '', parent_id: '', cor: '#6366f1', ignorar_dashboard: false });
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
     const loadData = async () => {
@@ -33,19 +33,29 @@ export default function CategoriesPage() {
 
     const openNew = (parentId = null) => {
         setEditing(null);
-        setForm({ nome: '', parent_id: parentId || '', cor: '#6366f1' });
+        setForm({ nome: '', parent_id: parentId || '', cor: '#6366f1', ignorar_dashboard: false });
         setShowModal(true);
     };
 
     const openEdit = (cat) => {
         setEditing(cat);
-        setForm({ nome: cat.nome, parent_id: cat.parent_id || '', cor: cat.cor || '#6366f1' });
+        setForm({
+            nome: cat.nome,
+            parent_id: cat.parent_id || '',
+            cor: cat.cor || '#6366f1',
+            ignorar_dashboard: !!cat.ignorar_dashboard,
+        });
         setShowModal(true);
     };
 
     const save = async () => {
         try {
-            const d = { nome: form.nome, parent_id: form.parent_id || null, cor: form.cor };
+            const d = {
+                nome: form.nome,
+                parent_id: form.parent_id || null,
+                cor: form.cor,
+                ignorar_dashboard: form.ignorar_dashboard,
+            };
             if (editing) await api.updateCategory(editing.id, d);
             else await api.createCategory(d);
             setShowModal(false);
@@ -66,7 +76,7 @@ export default function CategoriesPage() {
             <div className="page-header flex-between">
                 <div>
                     <h2>🏷️ Categorias</h2>
-                    <p>Gerencie categorias e subcategorias</p>
+                    <p>Gerencie categorias, subcategorias e regras de exibição no Dashboard</p>
                 </div>
                 <button className="btn btn-primary" onClick={() => openNew()}>+ Nova Categoria</button>
             </div>
@@ -82,6 +92,11 @@ export default function CategoriesPage() {
                                         <span style={{ width: 12, height: 12, borderRadius: '50%', background: cat.cor || 'var(--accent-primary)', display: 'inline-block' }} />
                                         {cat.nome}
                                         {cat.children?.length > 0 && <span className="text-xs text-muted">({cat.children.length} sub)</span>}
+                                        {cat.ignorar_dashboard && (
+                                            <span className="badge badge-warning ml-2" style={{ fontSize: '0.7rem', padding: '1px 6px' }} title="Esta categoria não afeta os totais/gráficos do Dashboard">
+                                                🚫 Ignorada no Dashboard
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="btn-group">
                                         <button className="btn btn-sm btn-secondary" onClick={() => openNew(cat.id)}>+ Sub</button>
@@ -98,6 +113,11 @@ export default function CategoriesPage() {
                                         <div className="category-name">
                                             <span style={{ width: 10, height: 10, borderRadius: '50%', background: sub.cor || 'var(--text-muted)', display: 'inline-block' }} />
                                             {sub.nome}
+                                            {sub.ignorar_dashboard && (
+                                                <span className="badge badge-warning ml-2" style={{ fontSize: '0.7rem', padding: '1px 6px' }}>
+                                                    🚫 Ignorada no Dashboard
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="btn-group">
                                             <button className="btn btn-sm btn-secondary" onClick={() => openEdit(sub)}>✏️</button>
@@ -149,7 +169,22 @@ export default function CategoriesPage() {
                                 ))}
                             </div>
                         </div>
-                        {form.parent_id && <div className="alert alert-success text-sm">🔗 Subcategoria</div>}
+
+                        <div className="form-group mt-4">
+                            <label className="form-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={form.ignorar_dashboard}
+                                    onChange={(e) => setForm((f) => ({ ...f, ignorar_dashboard: e.target.checked }))}
+                                />
+                                🚫 Ignorar nos gráficos e totais do Dashboard (ex: Investimentos, CDB)
+                            </label>
+                            <p className="text-xs text-muted mt-1" style={{ marginLeft: 24 }}>
+                                Transações desta categoria não serão contabilizadas como Receita/Despesa nos gráficos de saldo e mensal.
+                            </p>
+                        </div>
+
+                        {form.parent_id && <div className="alert alert-success text-sm mt-2">🔗 Subcategoria</div>}
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
                             <button className="btn btn-primary" onClick={save} disabled={!form.nome}>{editing ? 'Salvar' : 'Criar'}</button>

@@ -2,19 +2,33 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
+import { Category } from '../entities/category.entity';
 
 @Injectable()
 export class DashboardService {
   constructor(
     @InjectRepository(Transaction)
     private readonly txRepo: Repository<Transaction>,
+    @InjectRepository(Category)
+    private readonly catRepo: Repository<Category>,
   ) {}
 
-  async getSummary(dataInicio?: string, dataFim?: string) {
-    const qb = this.txRepo.createQueryBuilder('tx');
+  private async getIgnoredCategoryNames(): Promise<string[]> {
+    const ignored = await this.catRepo.find({
+      where: { ignorar_dashboard: true },
+    });
+    return ignored.map((c) => c.nome);
+  }
 
+  async getSummary(dataInicio?: string, dataFim?: string) {
+    const ignoredNames = await this.getIgnoredCategoryNames();
+
+    const qb = this.txRepo.createQueryBuilder('tx');
     if (dataInicio) qb.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb.andWhere('tx.data <= :dataFim', { dataFim });
+    if (ignoredNames.length > 0) {
+      qb.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
+    }
 
     // Totals
     const totals = await qb
@@ -30,6 +44,9 @@ export class DashboardService {
     const qb2 = this.txRepo.createQueryBuilder('tx');
     if (dataInicio) qb2.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb2.andWhere('tx.data <= :dataFim', { dataFim });
+    if (ignoredNames.length > 0) {
+      qb2.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
+    }
 
     const byCategory = await qb2
       .select([
@@ -46,6 +63,9 @@ export class DashboardService {
     const qb3 = this.txRepo.createQueryBuilder('tx');
     if (dataInicio) qb3.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb3.andWhere('tx.data <= :dataFim', { dataFim });
+    if (ignoredNames.length > 0) {
+      qb3.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
+    }
 
     const biggest = await qb3
       .orderBy('ABS(tx.valor)', 'DESC')
@@ -59,13 +79,19 @@ export class DashboardService {
       totalTransactions: parseInt(totals.total) || 0,
       byCategory,
       biggestTransactions: biggest,
+      ignoredCategories: ignoredNames,
     };
   }
 
   async getTimeline(dataInicio?: string, dataFim?: string) {
+    const ignoredNames = await this.getIgnoredCategoryNames();
+
     const qb = this.txRepo.createQueryBuilder('tx');
     if (dataInicio) qb.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb.andWhere('tx.data <= :dataFim', { dataFim });
+    if (ignoredNames.length > 0) {
+      qb.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
+    }
 
     const results = await qb
       .select([

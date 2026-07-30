@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.7] - 2026-07-30
+
+### Added
+- **Dashboard "Minha Carteira"**:
+  - Renomeado menu e cabeçalho para "Minha Carteira".
+  - Adicionadas abas "Despesas por categoria" (Donut Chart) e "Acompanhamento mensal" (Gráfico de barras dos últimos 12 meses fixo).
+  - Adicionada tabela de transações paginada (10, 25, 50, 100 por página) com busca e filtro por fatia de categoria.
+  - Adicionada opção `ignorar_dashboard` no CRUD de Categorias para ocultar investimentos/transferências nos gráficos de receitas e despesas.
+
+### Fixed
+- **Motor de Classificação e Sugestões**:
+  - Sanitização de ruídos operacionais de bancos (`DEBITO DE CARTAO`, `TRANSF ENVIADA PIX`, etc.) em qualquer posição.
+  - Flexibilização de palavras-chave (`.*`) para aceitar códigos intermediários (ex: `C6`) entre termos bancários.
+  - Reutilização automática e prevenção de duplicação de regras com a mesma expressão regular (`regex`).
+  - Reclassificação automática e filtragem estrita na aba "Classificar", ocultando grupos cujas transações pertençam a alguma regra ativa.
+- **Sincronização do CRUD de Categorias**:
+  - Atualizado `getDistinctCategories` para combinar categorias do banco de dados com as das transações, refletindo alterações do CRUD em todas as telas.
+- **Acessibilidade e Modo Escuro**:
+  - Estilização global dos elementos `select`, `option` e `datalist` garantindo fundo escuro (`#111827`) e alto contraste (`#f1f5f9`).
+
 ## [1.1.6] - 2026-07-24
 
 ### Fixed

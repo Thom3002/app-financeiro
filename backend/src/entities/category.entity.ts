@@ -35,6 +35,9 @@ export class Category {
   @Column({ type: 'varchar', length: 10, nullable: true })
   icone: string;
 
+  @Column({ type: 'boolean', default: false })
+  ignorar_dashboard: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 }

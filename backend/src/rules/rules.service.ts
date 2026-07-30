@@ -26,6 +26,25 @@ export class RulesService {
   }
 
   async create(data: Partial<ClassificationRule>) {
+    if (data.regex) {
+      const existingMatches = await this.ruleRepo.find({
+        where: { regex: data.regex },
+        order: { priority: 'ASC' },
+      });
+      if (existingMatches.length > 0) {
+        const [first, ...duplicates] = existingMatches;
+        Object.assign(first, data);
+        const saved = await this.ruleRepo.save(first);
+
+        for (const dup of duplicates) {
+          await this.ruleRepo.remove(dup);
+        }
+
+        await this.categoriesService.ensureExists(saved.categoria, saved.subcategoria);
+        await this.classifierService.reclassifyAll();
+        return saved;
+      }
+    }
     const rule = this.ruleRepo.create(data);
     const saved = await this.ruleRepo.save(rule);
     await this.categoriesService.ensureExists(saved.categoria, saved.subcategoria);

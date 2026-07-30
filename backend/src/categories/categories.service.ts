@@ -39,7 +39,7 @@ export class CategoriesService {
     });
   }
 
-  create(data: { nome: string; parent_id?: string; cor?: string; icone?: string }) {
+  create(data: { nome: string; parent_id?: string; cor?: string; icone?: string; ignorar_dashboard?: boolean }) {
     const cat = this.catRepo.create(data);
     return this.catRepo.save(cat);
   }

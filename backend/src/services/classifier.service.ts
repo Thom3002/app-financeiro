@@ -137,11 +137,16 @@ export class ClassifierService {
       .split(',')
       .map((k) => k.trim())
       .filter(Boolean)
-      .map((k) =>
-        k
-          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex chars
-          .replace(/\s+/g, '\\s*'), // spaces become flexible whitespace
-      );
+      .map((k) => {
+        // Remove pontuações/símbolos soltos nas bordas (como pontos no final de "cdb lim.garant.")
+        let cleaned = k.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').trim();
+        if (!cleaned) cleaned = k;
+
+        // Trata pontos internos como pontuação opcional (\.?) e espaços como .* (para tolerar códigos como C6 entre as palavras)
+        return cleaned
+          .replace(/[.*+?^${}()|[\]\\]/g, (m) => (m === '.' ? '\\.?' : '\\' + m))
+          .replace(/\s+/g, '.*');
+      });
     if (parts.length === 0) return '';
     if (parts.length === 1) return parts[0];
     return `(?:${parts.join('|')})`;
@@ -163,7 +168,8 @@ export class ClassifierService {
       const result = this.classifyTransaction(tx, rules);
       const changed =
         result.categoria !== tx.categoria ||
-        result.subcategoria !== tx.subcategoria;
+        result.subcategoria !== tx.subcategoria ||
+        result.matched_rule_id !== tx.matched_rule_id;
 
       if (changed) {
         tx.categoria = result.categoria;

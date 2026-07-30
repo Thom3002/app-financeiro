@@ -19,8 +19,40 @@ export interface SuggestionGroup {
   }[];
 }
 
+function stripBankNoise(text: string): string {
+  if (!text) return '';
+  let cleaned = text;
+
+  // Lista de prefixos e termos operacionais genéricos de bancos em qualquer posição do texto
+  const noiseRegexes = [
+    /\bdebito\s+de\s+cartao\b/gi,
+    /\bdebito\s+cartao\b/gi,
+    /\brever\s+par\s+deb\s+cartao\b/gi,
+    /\bpix\s+enviado\s+para\b/gi,
+    /\bpix\s+recebido\s+de\b/gi,
+    /\btransf\s+enviada\s+pix\b/gi,
+    /\btransf\s+recebida\s+pix\b/gi,
+    /\btransf\s+enviada\b/gi,
+    /\btransf\s+recebida\b/gi,
+    /\btransferencia\s+enviada\b/gi,
+    /\btransferencia\s+recebida\b/gi,
+    /\bpagamento\s+de\s+boleto\b/gi,
+    /\bpagto\s+elet\b/gi,
+    /\bcompra\s+no\s+debito\b/gi,
+    /\bcompra\s+no\s+credito\b/gi,
+    /\bcompra\s+cartao\b/gi,
+  ];
+
+  for (const regex of noiseRegexes) {
+    cleaned = cleaned.replace(regex, ' ').trim();
+  }
+
+  return cleaned.replace(/\s+/g, ' ');
+}
+
 function normalizeForGrouping(text: string): string {
-  return (text || '')
+  const cleaned = stripBankNoise(text || '');
+  return cleaned
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -30,12 +62,11 @@ function normalizeForGrouping(text: string): string {
 }
 
 function extractKeyword(texts: string[]): string {
-  // Find the most common significant word/phrase across texts
   const wordCounts = new Map<string, number>();
 
   for (const text of texts) {
-    const normalized = normalizeForGrouping(text);
-    // Split into words and track word combinations
+    const cleaned = stripBankNoise(text);
+    const normalized = normalizeForGrouping(cleaned);
     const words = normalized.split(' ').filter((w) => w.length > 2);
     const seen = new Set<string>();
 
@@ -46,7 +77,7 @@ function extractKeyword(texts: string[]): string {
       }
     }
 
-    // Also try 2-word combinations
+    // 2-word combinations
     for (let i = 0; i < words.length - 1; i++) {
       const bigram = words[i] + ' ' + words[i + 1];
       if (!seen.has(bigram)) {
@@ -56,19 +87,20 @@ function extractKeyword(texts: string[]): string {
     }
   }
 
-  // Filter common/noise words
   const noise = new Set([
     'de', 'do', 'da', 'dos', 'das', 'para', 'por', 'com', 'sem',
     'que', 'uma', 'bra', 'pix', 'recebido', 'enviado', 'transf',
-    'enviada', 'debito', 'cartao', 'credito',
+    'enviada', 'debito', 'cartao', 'credito', 'rever', 'par', 'deb',
+    'sp', 'rj', 'mg', 'rs', 'pr', 'sc', 'ba', 'pe', 'ce', 'go', 'df',
+    'pagamento', 'pagto', 'boleto', 'compra', 'transferencia',
   ]);
 
-  // Return the word/phrase that appears most, preferring longer phrases
   let best = '';
   let bestScore = 0;
   for (const [word, count] of wordCounts) {
-    if (noise.has(word)) continue;
-    const score = count * (word.includes(' ') ? 2 : 1); // prefer bigrams
+    // Ignora o termo se qualquer uma das palavras contidas nele for ruído
+    if (word.split(' ').some((w) => noise.has(w))) continue;
+    const score = count * (word.includes(' ') ? 2 : 1);
     if (score > bestScore || (score === bestScore && word.length > best.length)) {
       best = word;
       bestScore = score;
@@ -93,7 +125,11 @@ export class ClassificationService {
     suggestions: SuggestionGroup[];
     totalUnclassified: number;
   }> {
-    // Get unclassified transactions
+    // 1. Força a reclassificação de todas as transações com as regras mais recentes
+    await this.classifierService.reclassifyAll();
+    const activeRules = await this.classifierService.loadRules();
+
+    // 2. Busca as transações sem categoria no banco
     const unclassified = await this.txRepo.find({
       where: [
         { categoria: 'Não classificado' as any },
@@ -102,25 +138,37 @@ export class ClassificationService {
       order: { data: 'DESC' },
     });
 
-    if (unclassified.length === 0) {
+    // 3. Exclui estritamente qualquer transação que já possua matched_rule_id ou corresponda a alguma regra ativa
+    const trulyUnclassified = unclassified.filter((tx) => {
+      if (tx.is_manual) return false;
+      if (tx.matched_rule_id) return false;
+      const res = this.classifierService.classifyTransaction(tx, activeRules);
+      return !res.matched_rule_id && (res.categoria === 'Não classificado' || !res.categoria);
+    });
+
+    if (trulyUnclassified.length === 0) {
       return { suggestions: [], totalUnclassified: 0 };
     }
 
-    // Group by normalized description pattern
     const groups = new Map<
       string,
       { transactions: Transaction[]; key: string }
     >();
 
-    for (const tx of unclassified) {
-      const key = normalizeForGrouping(tx.descricao || tx.titulo);
+    for (const tx of trulyUnclassified) {
+      // Prioriza encontrar o texto mais descritivo do estabelecimento/favorecido
+      const fullText = [tx.titulo, tx.descricao].filter(Boolean).join(' ');
+      const cleaned = stripBankNoise(fullText) || fullText;
+      const key = normalizeForGrouping(cleaned);
+
+      if (!key) continue;
+
       if (!groups.has(key)) {
         groups.set(key, { transactions: [], key });
       }
       groups.get(key)!.transactions.push(tx);
     }
 
-    // Convert to suggestion groups, sorted by count
     const suggestions: SuggestionGroup[] = [];
 
     for (const [, group] of groups) {
@@ -151,12 +199,11 @@ export class ClassificationService {
       });
     }
 
-    // Sort by count descending
     suggestions.sort((a, b) => b.count - a.count);
 
     return {
       suggestions: suggestions.slice(0, 20),
-      totalUnclassified: unclassified.length,
+      totalUnclassified: trulyUnclassified.length,
     };
   }
 
@@ -214,39 +261,62 @@ export class ClassificationService {
   }> {
     const regex = this.classifierService.keywordsToRegex(data.keywords);
 
-    // Create the rule first
-    // Find the highest priority and put new rule at the end
-    const existingRules = await this.ruleRepo.find({
+    // Verifica se já existem regras com o mesmo regex exato no banco
+    const existingMatches = await this.ruleRepo.find({
+      where: { regex },
       order: { priority: 'ASC' },
     });
-    const maxPriority =
-      existingRules.length > 0
-        ? Math.max(...existingRules.map((r) => r.priority))
-        : 0;
 
-    const rule = this.ruleRepo.create({
-      regex,
-      campo_alvo: data.campo_alvo || 'ambos',
-      banco_escopo: 'qualquer',
-      sinal_escopo: 'qualquer',
-      categoria: data.categoria,
-      subcategoria: data.subcategoria || null,
-      priority: maxPriority + 10,
-      enabled: true,
-      overwrite_manual: false,
-    });
+    let rule: ClassificationRule;
+
+    if (existingMatches.length > 0) {
+      // Usa a primeira regra existente e atualiza seus dados
+      const [first, ...duplicates] = existingMatches;
+      rule = first;
+      rule.categoria = data.categoria;
+      rule.subcategoria = data.subcategoria || null;
+      rule.campo_alvo = data.campo_alvo || 'ambos';
+      rule.enabled = true;
+
+      // Remove eventuais duplicadas anteriores que possam ter sido criadas antes
+      for (const dup of duplicates) {
+        await this.ruleRepo.remove(dup);
+      }
+    } else {
+      // Caso não exista, cria uma nova regra na sequência de prioridades
+      const existingRules = await this.ruleRepo.find({
+        order: { priority: 'ASC' },
+      });
+      const maxPriority =
+        existingRules.length > 0
+          ? Math.max(...existingRules.map((r) => r.priority))
+          : 0;
+
+      rule = this.ruleRepo.create({
+        regex,
+        campo_alvo: data.campo_alvo || 'ambos',
+        banco_escopo: 'qualquer',
+        sinal_escopo: 'qualquer',
+        categoria: data.categoria,
+        subcategoria: data.subcategoria || null,
+        priority: maxPriority + 10,
+        enabled: true,
+        overwrite_manual: false,
+      });
+    }
+
     const saved = await this.ruleRepo.save(rule);
     await this.categoriesService.ensureExists(data.categoria, data.subcategoria);
 
-    // Reclassify all
     const { totalChanged } = await this.classifierService.reclassifyAll();
 
-    // Detect conflicts AFTER creating the rule (so it's in the DB)
+    const matchingCount = await this.txRepo.count({
+      where: { matched_rule_id: saved.id },
+    });
+
     const { conflicts: rawConflicts } =
       await this.classifierService.detectConflicts(regex, saved.id);
 
-    // Prepend the newly created rule to the conflicts list so the user
-    // can reorder it relative to the existing conflicting rules
     let conflicts: any[] = rawConflicts;
     if (rawConflicts.length > 0) {
       conflicts = [
@@ -262,7 +332,7 @@ export class ClassificationService {
 
     return {
       ruleCreated: saved,
-      transactionsClassified: totalChanged,
+      transactionsClassified: matchingCount || totalChanged,
       conflicts,
     };
   }
@@ -276,7 +346,6 @@ export class ClassificationService {
       updated++;
     }
 
-    // Reclassify after reorder
     await this.classifierService.reclassifyAll();
     return { updated };
   }
