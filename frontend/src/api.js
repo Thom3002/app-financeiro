@@ -90,9 +90,21 @@ export const api = {
         return request(`/dashboard/drilldown/${encodeURIComponent(categoria)}${qs ? '?' + qs : ''}`);
     },
 
-    // Classification
-    getClassificationSuggestions: () => request('/classification/suggestions'),
+    getClassificationSuggestions: (params = {}) => {
+        const qs = new URLSearchParams(
+            Object.entries(params).filter(([, v]) => v),
+        ).toString();
+        return request(`/classification/suggestions${qs ? '?' + qs : ''}`);
+    },
     previewKeyword: (data) => request('/classification/preview-keyword', { method: 'POST', body: data }),
     applyClassification: (data) => request('/classification/apply', { method: 'POST', body: data }),
     reorderRules: (ruleIds) => request('/classification/reorder', { method: 'POST', body: { ruleIds } }),
+
+    // Pluggy Open Finance
+    getPluggyConfig: () => request('/pluggy/config'),
+    savePluggyConfig: (data) => request('/pluggy/config', { method: 'POST', body: data }),
+    getPluggyConnectToken: () => request('/pluggy/connect-token', { method: 'POST' }),
+    getPluggyConnections: () => request('/pluggy/connections'),
+    syncPluggy: (itemId) => request('/pluggy/sync', { method: 'POST', body: { itemId } }),
+    deletePluggyConnection: (id) => request(`/pluggy/connections/${id}`, { method: 'DELETE' }),
 };

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -84,6 +84,17 @@ function createWindow(url) {
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.js')
         }
+    });
+
+    mainWindow.maximize();
+
+    // Redirecionar qualquer popup ou link externo (Auth0, Google OAuth, Pluggy) para o navegador padrão do SO
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            shell.openExternal(url);
+            return { action: 'deny' };
+        }
+        return { action: 'allow' };
     });
 
     mainWindow.loadURL(url).catch(err => {

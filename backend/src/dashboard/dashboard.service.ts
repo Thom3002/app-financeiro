@@ -20,15 +20,20 @@ export class DashboardService {
     return ignored.map((c) => c.nome);
   }
 
-  async getSummary(dataInicio?: string, dataFim?: string) {
-    const ignoredNames = await this.getIgnoredCategoryNames();
-
-    const qb = this.txRepo.createQueryBuilder('tx');
+  private applyDashboardFilters(qb: any, dataInicio?: string, dataFim?: string, ignoredNames: string[] = []) {
+    qb.andWhere('(tx.ignorar_dashboard IS NULL OR tx.ignorar_dashboard = false)');
     if (dataInicio) qb.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb.andWhere('tx.data <= :dataFim', { dataFim });
     if (ignoredNames.length > 0) {
       qb.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
     }
+  }
+
+  async getSummary(dataInicio?: string, dataFim?: string) {
+    const ignoredNames = await this.getIgnoredCategoryNames();
+
+    const qb = this.txRepo.createQueryBuilder('tx');
+    this.applyDashboardFilters(qb, dataInicio, dataFim, ignoredNames);
 
     // Totals
     const totals = await qb
@@ -42,11 +47,7 @@ export class DashboardService {
 
     // By category
     const qb2 = this.txRepo.createQueryBuilder('tx');
-    if (dataInicio) qb2.andWhere('tx.data >= :dataInicio', { dataInicio });
-    if (dataFim) qb2.andWhere('tx.data <= :dataFim', { dataFim });
-    if (ignoredNames.length > 0) {
-      qb2.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
-    }
+    this.applyDashboardFilters(qb2, dataInicio, dataFim, ignoredNames);
 
     const byCategory = await qb2
       .select([
@@ -61,11 +62,7 @@ export class DashboardService {
 
     // Biggest transactions
     const qb3 = this.txRepo.createQueryBuilder('tx');
-    if (dataInicio) qb3.andWhere('tx.data >= :dataInicio', { dataInicio });
-    if (dataFim) qb3.andWhere('tx.data <= :dataFim', { dataFim });
-    if (ignoredNames.length > 0) {
-      qb3.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
-    }
+    this.applyDashboardFilters(qb3, dataInicio, dataFim, ignoredNames);
 
     const biggest = await qb3
       .orderBy('ABS(tx.valor)', 'DESC')
@@ -87,11 +84,7 @@ export class DashboardService {
     const ignoredNames = await this.getIgnoredCategoryNames();
 
     const qb = this.txRepo.createQueryBuilder('tx');
-    if (dataInicio) qb.andWhere('tx.data >= :dataInicio', { dataInicio });
-    if (dataFim) qb.andWhere('tx.data <= :dataFim', { dataFim });
-    if (ignoredNames.length > 0) {
-      qb.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
-    }
+    this.applyDashboardFilters(qb, dataInicio, dataFim, ignoredNames);
 
     const results = await qb
       .select([

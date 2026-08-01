@@ -13,6 +13,10 @@ import { CategoriesModule } from './categories/categories.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ClassificationModule } from './classification/classification.module';
 
+import { PluggyItem } from './entities/pluggy-item.entity';
+import { Setting } from './entities/setting.entity';
+import { PluggyModule } from './pluggy/pluggy.module';
+
 @Module({
   imports: [
     ServeStaticModule.forRoot({
@@ -25,7 +29,7 @@ import { ClassificationModule } from './classification/classification.module';
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: process.env.DATABASE_PATH || './data/financeiro.db',
-      entities: [Transaction, ClassificationRule, Category, ImportLog],
+      entities: [Transaction, ClassificationRule, Category, ImportLog, PluggyItem, Setting],
       synchronize: true,
     }),
     ImportModule,
@@ -34,6 +38,7 @@ import { ClassificationModule } from './classification/classification.module';
     CategoriesModule,
     DashboardModule,
     ClassificationModule,
+    PluggyModule,
   ],
 })
 export class AppModule {}

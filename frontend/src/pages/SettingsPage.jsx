@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { api } from '../api';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -524,6 +525,104 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 )}
+
+                <PluggySettingsPanel />
+            </div>
+        </div>
+    );
+}
+
+function PluggySettingsPanel() {
+    const [clientId, setClientId] = useState('');
+    const [clientSecret, setClientSecret] = useState('');
+    const [hasCredentials, setHasCredentials] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState('');
+    const [showSecret, setShowSecret] = useState(false);
+
+    useEffect(() => {
+        api.getPluggyConfig()
+            .then((data) => {
+                setHasCredentials(data.hasCredentials);
+                if (data.clientId) setClientId(data.clientId);
+                if (data.clientSecret) setClientSecret(data.clientSecret);
+            })
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, []);
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!clientId || !clientSecret) return;
+        setSaving(true);
+        setMsg('');
+        try {
+            await api.savePluggyConfig({ clientId, clientSecret });
+            setHasCredentials(true);
+            setMsg('Credenciais do Pluggy salvas com sucesso!');
+            setTimeout(() => setMsg(''), 4000);
+        } catch (err) {
+            setMsg('Erro ao salvar credenciais: ' + err.message);
+        }
+        setSaving(false);
+    };
+
+    return (
+        <div className="card" style={{ marginTop: '20px' }}>
+            <div className="card-header">
+                <h3 className="card-title">
+                    Integração Pluggy (Open Finance)
+                </h3>
+                <span className={`badge ${hasCredentials ? 'badge-success' : 'badge-warning'}`}>
+                    {hasCredentials ? 'Configurado' : 'Não Configurado'}
+                </span>
+            </div>
+            <div className="card-body">
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                    Insira abaixo o Client ID e Client Secret gerados na sua conta do Pluggy (dashboard.pluggy.ai) para habilitar a conexão automática com seus bancos.
+                </p>
+
+                {msg && <div className="alert alert-info" style={{ marginBottom: '16px' }}>{msg}</div>}
+
+                <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="form-group">
+                        <label className="form-label">Client ID do Pluggy</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Ex: 5ff1265b-4e7e-4785-af23-..."
+                            value={clientId}
+                            onChange={(e) => setClientId(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Client Secret do Pluggy</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                                type={showSecret ? 'text' : 'password'}
+                                className="form-input"
+                                placeholder={hasCredentials ? '••••••••••••••••' : 'Insira seu Client Secret'}
+                                value={clientSecret}
+                                onChange={(e) => setClientSecret(e.target.value)}
+                                required={!hasCredentials}
+                            />
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => setShowSecret(!showSecret)}
+                            >
+                                {showSecret ? 'Ocultar' : 'Mostrar'}
+                            </button>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                        <button type="submit" className="btn btn-primary" disabled={saving || !clientId}>
+                            {saving ? 'Salvando...' : 'Salvar Credenciais Pluggy'}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );

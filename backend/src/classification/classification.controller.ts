@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { ClassificationService } from './classification.service';
 
 @Controller('classification')
@@ -8,8 +8,11 @@ export class ClassificationController {
   ) {}
 
   @Get('suggestions')
-  getSuggestions() {
-    return this.classificationService.getSuggestions();
+  getSuggestions(
+    @Query('dataInicio') dataInicio?: string,
+    @Query('dataFim') dataFim?: string,
+  ) {
+    return this.classificationService.getSuggestions(dataInicio, dataFim);
   }
 
   @Post('preview-keyword')
@@ -30,6 +33,8 @@ export class ClassificationController {
       categoria: string;
       subcategoria?: string;
       campo_alvo?: string;
+      set_custo_fixo?: boolean;
+      ignorar_dashboard?: boolean;
     },
   ) {
     return this.classificationService.apply(body);

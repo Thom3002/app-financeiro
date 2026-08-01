@@ -37,6 +37,12 @@ export class ClassificationRule {
   @Column({ type: 'boolean', default: false })
   overwrite_manual: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  set_custo_fixo: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  ignorar_dashboard: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 }

@@ -8,6 +8,8 @@ export interface ClassificationResult {
   categoria: string;
   subcategoria: string | null;
   matched_rule_id: string | null;
+  set_custo_fixo?: boolean;
+  ignorar_dashboard?: boolean;
 }
 
 function normalizeForMatch(text: string): string {
@@ -64,6 +66,8 @@ export class ClassifierService {
             categoria: rule.categoria,
             subcategoria: rule.subcategoria || null,
             matched_rule_id: rule.id,
+            set_custo_fixo: rule.set_custo_fixo || false,
+            ignorar_dashboard: rule.ignorar_dashboard || false,
           };
         }
       } catch {
@@ -75,6 +79,8 @@ export class ClassifierService {
       categoria: 'Não classificado',
       subcategoria: null,
       matched_rule_id: null,
+      set_custo_fixo: false,
+      ignorar_dashboard: false,
     };
   }
 
@@ -175,6 +181,13 @@ export class ClassifierService {
         tx.categoria = result.categoria;
         tx.subcategoria = result.subcategoria;
         tx.matched_rule_id = result.matched_rule_id;
+        if (result.set_custo_fixo) {
+          tx.is_custo_fixo = true;
+        }
+        if (result.ignorar_dashboard) {
+          tx.ignorar_dashboard = true;
+          tx.ignore_reason = `Regra de classificação (${result.categoria})`;
+        }
         changedTxs.push(tx);
       }
     }

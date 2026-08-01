@@ -33,44 +33,96 @@ const formatDate = (d) => {
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d;
 };
 
-// Funções utilitárias para calcular datas de filtro
-const getLastMonthDates = () => {
+// Data de hoje em YYYY-MM-DD local (evitando desvio de fuso horário UTC)
+const getTodayLocal = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// 1. Últimos 30 Dias (Padrão inicial)
+const getLast30DaysDates = () => {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const past = new Date();
+    past.setDate(now.getDate() - 30);
+    const year = past.getFullYear();
+    const month = String(past.getMonth() + 1).padStart(2, '0');
+    const day = String(past.getDate()).padStart(2, '0');
     return {
-        dataInicio: start.toISOString().split('T')[0],
-        dataFim: end.toISOString().split('T')[0],
+        dataInicio: `${year}-${month}-${day}`,
+        dataFim: getTodayLocal(),
     };
 };
 
+// 2. Mês Atual
+const getCurrentMonthDates = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+    return {
+        dataInicio: `${year}-${month}-01`,
+        dataFim: `${year}-${month}-${String(lastDay).padStart(2, '0')}`,
+    };
+};
+
+// 3. Mês Anterior
+const getPreviousMonthDates = () => {
+    const now = new Date();
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const year = prevMonthDate.getFullYear();
+    const month = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(year, prevMonthDate.getMonth() + 1, 0).getDate();
+    return {
+        dataInicio: `${year}-${month}-01`,
+        dataFim: `${year}-${month}-${String(lastDay).padStart(2, '0')}`,
+    };
+};
+
+// 4. Últimos 3 Meses (90 dias atrás até hoje)
 const get3MonthsDates = () => {
     const now = new Date();
-    const start = new Date();
-    start.setMonth(now.getMonth() - 3);
+    const past = new Date();
+    past.setDate(now.getDate() - 90);
+    const year = past.getFullYear();
+    const month = String(past.getMonth() + 1).padStart(2, '0');
+    const day = String(past.getDate()).padStart(2, '0');
     return {
-        dataInicio: start.toISOString().split('T')[0],
-        dataFim: now.toISOString().split('T')[0],
+        dataInicio: `${year}-${month}-${day}`,
+        dataFim: getTodayLocal(),
     };
 };
 
+// 5. Últimos 6 Meses (180 dias atrás até hoje)
 const get6MonthsDates = () => {
     const now = new Date();
-    const start = new Date();
-    start.setMonth(now.getMonth() - 6);
+    const past = new Date();
+    past.setDate(now.getDate() - 180);
+    const year = past.getFullYear();
+    const month = String(past.getMonth() + 1).padStart(2, '0');
+    const day = String(past.getDate()).padStart(2, '0');
     return {
-        dataInicio: start.toISOString().split('T')[0],
-        dataFim: now.toISOString().split('T')[0],
+        dataInicio: `${year}-${month}-${day}`,
+        dataFim: getTodayLocal(),
     };
 };
 
+// 6. Este Ano
 const get1YearDates = () => {
     const now = new Date();
-    const start = new Date();
-    start.setFullYear(now.getFullYear() - 1);
     return {
-        dataInicio: start.toISOString().split('T')[0],
-        dataFim: now.toISOString().split('T')[0],
+        dataInicio: `${now.getFullYear()}-01-01`,
+        dataFim: getTodayLocal(),
+    };
+};
+
+// 7. Todo o Período
+const getAllTimeDates = () => {
+    return {
+        dataInicio: '',
+        dataFim: '',
     };
 };
 
@@ -89,9 +141,9 @@ export default function DashboardPage() {
     const { isVisible } = useVisibility();
     const formatValue = (v) => (!isVisible ? '*****' : fmtCurrency(v));
 
-    // Estados do Período Principal (Padrão: Último Mês)
-    const [dateFilters, setDateFilters] = useState(() => getLastMonthDates());
-    const [activePreset, setActivePreset] = useState('lastMonth');
+    // Estados do Período Principal (Padrão: Últimos 30 Dias)
+    const [dateFilters, setDateFilters] = useState(() => getLast30DaysDates());
+    const [activePreset, setActivePreset] = useState('last30Days');
 
     // Estado da Aba de Gráfico selecionada ('category' | 'monthly')
     const [activeTab, setActiveTab] = useState('category');
@@ -101,8 +153,57 @@ export default function DashboardPage() {
     const [timeline, setTimeline] = useState([]);
     const [loadingSummary, setLoadingSummary] = useState(true);
 
-    // Lista de categorias únicas para filtro
+    // Lista de categorias para filtros e autocomplete
     const [categoriesList, setCategoriesList] = useState([]);
+    const [allCategories, setAllCategories] = useState([]);
+
+    // Modal de Edição/Classificação na Carteira
+    const [editingTx, setEditingTx] = useState(null);
+    const [editValues, setEditValues] = useState({
+        categoria: '',
+        subcategoria: '',
+        ignorar_dashboard: false,
+        is_custo_fixo: false,
+    });
+
+    useEffect(() => {
+        api.getCategoriesFlat().then(cats => {
+            setAllCategories(cats.filter(c => !c.parent_id));
+        }).catch(() => { });
+    }, []);
+
+    const getSubcategoryOptions = (catName) => {
+        const cat = allCategories.find(c => c.nome === catName);
+        return cat?.children || [];
+    };
+
+    const startEdit = (tx) => {
+        setEditingTx(tx);
+        setEditValues({
+            categoria: tx.categoria || '',
+            subcategoria: tx.subcategoria || '',
+            ignorar_dashboard: !!tx.ignorar_dashboard,
+            is_custo_fixo: !!tx.is_custo_fixo,
+        });
+    };
+
+    const saveEdit = async () => {
+        if (!editingTx) return;
+        try {
+            await api.updateTransactionCategory(editingTx.id, {
+                categoria: editValues.categoria || null,
+                subcategoria: editValues.subcategoria || null,
+                ignorar_dashboard: editValues.ignorar_dashboard,
+                is_custo_fixo: editValues.is_custo_fixo,
+            });
+            setEditingTx(null);
+            loadDashboardData();
+            loadTransactions();
+            window.dispatchEvent(new Event('unclassified-count-changed'));
+        } catch (e) {
+            alert('Erro ao salvar transação: ' + e.message);
+        }
+    };
 
     // Estados da Tabela de Transações abaixo dos gráficos
     const [txData, setTxData] = useState({ items: [], total: 0, page: 1, totalPages: 0 });
@@ -123,7 +224,7 @@ export default function DashboardPage() {
             .catch(() => {});
     }, []);
 
-    // Carrega Resumo e Linha do Tempo (Timeline sempre de 12 meses independentemente do período)
+    // Carrega Resumo e Linha do Tempo
     const loadDashboardData = useCallback(async () => {
         setLoadingSummary(true);
         try {
@@ -141,6 +242,16 @@ export default function DashboardPage() {
 
     useEffect(() => {
         loadDashboardData();
+    }, [loadDashboardData]);
+
+    // Ouvir atualizações de classificação e recarregar o dashboard em tempo real
+    useEffect(() => {
+        const handleUpdate = () => {
+            loadDashboardData();
+            api.getDistinctCategories().then(setCategoriesList).catch(() => {});
+        };
+        window.addEventListener('unclassified-count-changed', handleUpdate);
+        return () => window.removeEventListener('unclassified-count-changed', handleUpdate);
     }, [loadDashboardData]);
 
     // Carrega Tabela de Transações (com base no período e filtros específicos da tabela)
@@ -185,11 +296,26 @@ export default function DashboardPage() {
         }
     };
 
-    // Dados de categorias para o gráfico Donut (Somente Saídas/Despesas)
+    const handleMonthlyBarClick = (entry) => {
+        if (!entry || !entry.mes) return;
+        const parts = entry.mes.split('-');
+        if (parts.length !== 2) return;
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        const lastDay = new Date(year, month, 0).getDate();
+        const start = `${parts[0]}-${parts[1]}-01`;
+        const end = `${parts[0]}-${parts[1]}-${String(lastDay).padStart(2, '0')}`;
+
+        setActivePreset('custom');
+        setDateFilters({ dataInicio: start, dataFim: end });
+        setTxFilters((prev) => ({ ...prev, page: 1 }));
+    };
+
+    // Dados de categorias para o gráfico Donut (Somente Saídas/Despesas com fallback para Não classificado)
     const catData = (summary?.byCategory || [])
-        .filter((c) => c.categoria && (parseFloat(c.total_saidas) || 0) > 0)
+        .filter((c) => (parseFloat(c.total_saidas) || 0) > 0)
         .map((c) => ({
-            name: c.categoria,
+            name: c.categoria || 'Não classificado',
             saidas: parseFloat(c.total_saidas) || 0,
             entradas: parseFloat(c.total_entradas) || 0,
             count: parseInt(c.count, 10) || 0,
@@ -225,30 +351,48 @@ export default function DashboardPage() {
 
                 {/* Seletores de Período */}
                 <div className="flex flex-column gap-2" style={{ alignItems: 'flex-end' }}>
-                    <div className="period-quick-buttons">
+                    <div className="period-quick-buttons" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                         <button
-                            className={`btn-period-quick ${activePreset === 'lastMonth' ? 'active' : ''}`}
-                            onClick={() => applyPeriodPreset('lastMonth', getLastMonthDates)}
+                            className={`btn-period-quick ${activePreset === 'last30Days' ? 'active' : ''}`}
+                            onClick={() => applyPeriodPreset('last30Days', getLast30DaysDates)}
                         >
-                            Último Mês
+                            Últimos 30 Dias
+                        </button>
+                        <button
+                            className={`btn-period-quick ${activePreset === 'currentMonth' ? 'active' : ''}`}
+                            onClick={() => applyPeriodPreset('currentMonth', getCurrentMonthDates)}
+                        >
+                            Mês Atual
+                        </button>
+                        <button
+                            className={`btn-period-quick ${activePreset === 'previousMonth' ? 'active' : ''}`}
+                            onClick={() => applyPeriodPreset('previousMonth', getPreviousMonthDates)}
+                        >
+                            Mês Anterior
                         </button>
                         <button
                             className={`btn-period-quick ${activePreset === '3m' ? 'active' : ''}`}
                             onClick={() => applyPeriodPreset('3m', get3MonthsDates)}
                         >
-                            Últimos 3 meses
+                            Últimos 3 Meses
                         </button>
                         <button
                             className={`btn-period-quick ${activePreset === '6m' ? 'active' : ''}`}
                             onClick={() => applyPeriodPreset('6m', get6MonthsDates)}
                         >
-                            Últimos 6 meses
+                            Últimos 6 Meses
                         </button>
                         <button
                             className={`btn-period-quick ${activePreset === '1y' ? 'active' : ''}`}
                             onClick={() => applyPeriodPreset('1y', get1YearDates)}
                         >
-                            1 Ano
+                            Este Ano
+                        </button>
+                        <button
+                            className={`btn-period-quick ${activePreset === 'all' ? 'active' : ''}`}
+                            onClick={() => applyPeriodPreset('all', getAllTimeDates)}
+                        >
+                            Tudo
                         </button>
                     </div>
 
@@ -451,7 +595,15 @@ export default function DashboardPage() {
                 {activeTab === 'monthly' && (
                     <div style={{ height: 320 }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={timeline} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                            <BarChart
+                                data={timeline}
+                                margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                                onClick={(state) => {
+                                    if (state && state.activePayload && state.activePayload.length > 0) {
+                                        handleMonthlyBarClick(state.activePayload[0].payload);
+                                    }
+                                }}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                                 <XAxis dataKey="mes" stroke="#64748b" fontSize={12} />
                                 <YAxis
@@ -471,13 +623,117 @@ export default function DashboardPage() {
                                     formatter={(v) => formatValue(v)}
                                 />
                                 <Legend wrapperStyle={{ paddingTop: 10 }} />
-                                <Bar dataKey="entradas" fill="#34d399" name="Receita" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="saidas" fill="#fbbf24" name="Gastos" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="entradas" fill="#34d399" name="Receita" radius={[4, 4, 0, 0]} style={{ cursor: 'pointer' }} onClick={(data) => handleMonthlyBarClick(data)} />
+                                <Bar dataKey="saidas" fill="#fbbf24" name="Gastos" radius={[4, 4, 0, 0]} style={{ cursor: 'pointer' }} onClick={(data) => handleMonthlyBarClick(data)} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
                 )}
             </div>
+
+            {/* Modal de Edição / Classificação na Carteira */}
+            {editingTx && (() => {
+                const fullText = ((editingTx.titulo || '') + ' ' + (editingTx.descricao || '')).toUpperCase();
+                const isFatura = fullText.includes('FATURA') || fullText.includes('PAGTO FATURA') || fullText.includes('PAGAMENTO FATURA');
+                const isUnclassified = !editingTx.categoria || editingTx.categoria === 'Não classificado';
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                        <div className="card" style={{ maxWidth: 520, width: '100%', padding: 24 }}>
+                            <div className="card-header" style={{ marginBottom: 16 }}>
+                                <h3 className="card-title">
+                                    {isUnclassified ? '🏷️ Classificar Transação' : '✏️ Editar Transação'}
+                                </h3>
+                                <button className="btn btn-sm btn-secondary" onClick={() => setEditingTx(null)}>✕</button>
+                            </div>
+
+                            <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, marginBottom: 16 }}>
+                                {editingTx.descricao || editingTx.titulo} ({formatValue(editingTx.valor)})
+                            </p>
+
+                            {/* Banner Inteligente de Pagamento de Fatura */}
+                            {isFatura && (
+                                <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                                    <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: 4 }}>
+                                        💡 Pagamento de Fatura de Cartão Detectado
+                                    </div>
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
+                                        Recomendamos ignorar este lançamento do Dashboard para evitar a contagem dupla de despesas na sua carteira.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        className={`btn btn-sm ${editValues.ignorar_dashboard ? 'btn-secondary' : 'btn-warning'}`}
+                                        onClick={() => setEditValues((prev) => ({ ...prev, ignorar_dashboard: !prev.ignorar_dashboard }))}
+                                    >
+                                        {editValues.ignorar_dashboard ? '✓ Ignorando do Dashboard' : '⚡ Ignorar do Dashboard (1 Clique)'}
+                                    </button>
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                <div>
+                                    <label className="form-label">Categoria (digite uma nova ou selecione)</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="Ex: Transporte, Alimentação..."
+                                        value={editValues.categoria}
+                                        onChange={(e) => setEditValues({ ...editValues, categoria: e.target.value })}
+                                        list="dash-modal-cat-list"
+                                    />
+                                    <datalist id="dash-modal-cat-list">
+                                        {allCategories.map((c) => (
+                                            <option key={c.id || c.nome} value={c.nome} />
+                                        ))}
+                                    </datalist>
+                                </div>
+
+                                <div>
+                                    <label className="form-label">Subcategoria (Opcional)</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="Ex: Uber, Metrô..."
+                                        value={editValues.subcategoria}
+                                        onChange={(e) => setEditValues({ ...editValues, subcategoria: e.target.value })}
+                                        list="dash-modal-subcat-list"
+                                    />
+                                    <datalist id="dash-modal-subcat-list">
+                                        {getSubcategoryOptions(editValues.categoria).map((s) => (
+                                            <option key={s.id || s.nome} value={s.nome} />
+                                        ))}
+                                    </datalist>
+                                </div>
+
+                                {/* Botões Interativos de Toggle Rápido */}
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                                    <button
+                                        type="button"
+                                        className={`btn btn-sm ${editValues.is_custo_fixo ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => setEditValues((prev) => ({ ...prev, is_custo_fixo: !prev.is_custo_fixo }))}
+                                        style={{ borderRadius: 20 }}
+                                    >
+                                        📌 {editValues.is_custo_fixo ? 'Custo Fixo (Ativo)' : 'Marcar como Custo Fixo'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`btn btn-sm ${editValues.ignorar_dashboard ? 'btn-warning' : 'btn-secondary'}`}
+                                        onClick={() => setEditValues((prev) => ({ ...prev, ignorar_dashboard: !prev.ignorar_dashboard }))}
+                                        style={{ borderRadius: 20 }}
+                                    >
+                                        {editValues.ignorar_dashboard ? '🙈 Ignorando do Dashboard' : '👁️ Exibir no Dashboard'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+                                <button className="btn btn-secondary" onClick={() => setEditingTx(null)}>Cancelar</button>
+                                <button className="btn btn-primary" onClick={saveEdit}>Salvar Transação</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Seção da Tabela de Transações (Directamente abaixo dos gráficos) */}
             <div className="card">
@@ -576,45 +832,70 @@ export default function DashboardPage() {
                                         >
                                             Valor {txFilters.orderBy === 'valor' ? (txFilters.ordem === 'ASC' ? '▲' : '▼') : ''}
                                         </th>
+                                        <th style={{ textAlign: 'center' }}>Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {txData.items.map((t) => (
-                                        <tr key={t.id}>
-                                            <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
-                                                {formatDate(t.data)}
-                                            </td>
-                                            <td>
-                                                <div className="font-medium truncate" title={t.titulo || t.descricao}>
-                                                    {t.titulo || t.descricao}
-                                                </div>
-                                                {t.titulo && t.descricao && t.titulo !== t.descricao && (
-                                                    <div className="text-xs text-muted truncate" title={t.descricao}>
-                                                        {t.descricao}
+                                    {txData.items.map((t) => {
+                                        const isUnclassified = !t.categoria || t.categoria === 'Não classificado';
+                                        return (
+                                            <tr key={t.id} style={{ opacity: t.ignorar_dashboard ? 0.75 : 1 }}>
+                                                <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
+                                                    {formatDate(t.data)}
+                                                </td>
+                                                <td>
+                                                    <div className="font-medium truncate" title={t.titulo || t.descricao}>
+                                                        {t.titulo || t.descricao}
                                                     </div>
-                                                )}
-                                            </td>
-                                            <td>
-                                                {t.categoria ? (
-                                                    <span
-                                                        className="badge badge-accent"
-                                                        style={{ cursor: 'pointer' }}
-                                                        onClick={() => setTxFilters((prev) => ({ ...prev, categoria: t.categoria, page: 1 }))}
-                                                    >
-                                                        {t.categoria}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-muted">—</span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <span className="badge badge-default">{t.banco || '—'}</span>
-                                            </td>
-                                            <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>
-                                                {formatValue(t.valor)}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                    {t.titulo && t.descricao && t.titulo !== t.descricao && (
+                                                        <div className="text-xs text-muted truncate" title={t.descricao}>
+                                                            {t.descricao}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {t.categoria ? (
+                                                        <span
+                                                            className="badge badge-accent"
+                                                            style={{ cursor: 'pointer' }}
+                                                            onClick={() => setTxFilters((prev) => ({ ...prev, categoria: t.categoria, page: 1 }))}
+                                                        >
+                                                            {t.categoria}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-muted">—</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <span className="badge badge-default">{t.banco || '—'}</span>
+                                                </td>
+                                                <td className={`text-right ${t.valor >= 0 ? 'valor-positivo' : 'valor-negativo'}`}>
+                                                    {formatValue(t.valor)}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    {isUnclassified ? (
+                                                        <button
+                                                            className="btn btn-sm btn-primary"
+                                                            onClick={() => startEdit(t)}
+                                                            title="Classificar esta transação"
+                                                            style={{ fontWeight: 600, padding: '2px 8px', fontSize: '0.78rem' }}
+                                                        >
+                                                            🏷️ Classificar
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            className="btn btn-sm btn-secondary"
+                                                            onClick={() => startEdit(t)}
+                                                            title="Editar categoria e opções"
+                                                            style={{ padding: '2px 8px', fontSize: '0.78rem' }}
+                                                        >
+                                                            ✏️ Editar
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

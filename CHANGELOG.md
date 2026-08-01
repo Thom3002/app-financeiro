@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.8] - 2026-08-01
+
+### Added
+- **Integração Pluggy v2 e Extração Inteligente de Banco**:
+  - Migração completa para os endpoints da Pluggy API v2 (`GET /v2/transactions`), removendo parâmetros legados e descontinuados (`from` e `pageSize`).
+  - Extração inteligente e limpa de nome da instituição para o conector `MeuPluggy`, nomeando a conexão como `C6 BANK (via MeuPluggy)`.
+  - Normalização automática em tempo real e na inicialização (`OnModuleInit`) dos valores das compras de cartão de crédito salvas do Pluggy (convertidas para valores negativos/despesas).
+- **Aprimoramentos de Classificação e Usabilidade**:
+  - Botão de Ação Dinâmico e Unificado nas tabelas de transações (`🏷️ Classificar` se não tiver categoria, `✏️ Editar` se já tiver).
+  - Modal Unificado de Classificação com **Banner Inteligente de Fatura de Cartão** (`⚡ Ignorar Fatura`), botão de toggle **`📌 Custo Fixo`**, botão de toggle **`🙈 Ignorar do Dashboard`** e campo de Categoria editável com `datalist` (permitindo digitar qualquer nova categoria ou escolher da lista).
+  - Painel de Resolução de Conflitos (`ConflictPanel`) aprimorado com explicações visuais e selo **`1º 👑`** indicando a prioridade máxima da regra do topo.
+  - Filtro por período dinâmico na aba de Classificação (`Este Mês`, `Último Mês`, `Últimos 3 Meses`, etc.) e atalhos ajustados na Carteira (`Últimos 30 Dias` por padrão, `Mês Atual`, `Mês Anterior`, `Últimos 3 Meses`, etc.).
+  - Filtro interativo ao clicar nas fatias do gráfico Donut e nas barras do gráfico de Acompanhamento Mensal (`BarChart`).
+  - Posicionado o campo **🔍 Buscar** no início da barra de filtros à esquerda.
+  - A aplicação Electron agora abre maximizada por padrão.
+
 ## [1.1.7] - 2026-07-30
 
 ### Added

@@ -52,13 +52,9 @@ export class TransactionsController {
   @Patch(':id')
   async updateCategory(
     @Param('id') id: string,
-    @Body() body: { categoria: string; subcategoria?: string },
+    @Body() body: any,
   ) {
-    const result = await this.txService.updateCategory(
-      id,
-      body.categoria,
-      body.subcategoria,
-    );
+    const result = await this.txService.updateCategory(id, body);
     if (!result) throw new NotFoundException('Transação não encontrada.');
     return result;
   }

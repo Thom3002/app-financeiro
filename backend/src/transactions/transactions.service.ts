@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
 import { Category } from '../entities/category.entity';
+import { ClassificationRule } from '../entities/classification-rule.entity';
 
 export interface TransactionFilters {
   dataInicio?: string;
@@ -20,6 +21,16 @@ export interface TransactionFilters {
   limit?: number;
 }
 
+export interface UpdateTransactionDto {
+  categoria?: string;
+  subcategoria?: string;
+  ignorar_dashboard?: boolean;
+  ignore_reason?: string;
+  is_custo_fixo?: boolean;
+  custo_fixo_grupo?: string;
+  createRulePattern?: string; // se informado, cria uma regra regex automática
+}
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -27,6 +38,8 @@ export class TransactionsService {
     private readonly txRepo: Repository<Transaction>,
     @InjectRepository(Category)
     private readonly catRepo: Repository<Category>,
+    @InjectRepository(ClassificationRule)
+    private readonly ruleRepo: Repository<ClassificationRule>,
   ) {}
 
   async findAll(filters: TransactionFilters) {
@@ -103,16 +116,51 @@ export class TransactionsService {
 
   async updateCategory(
     id: string,
-    categoria: string,
-    subcategoria?: string,
+    dto: UpdateTransactionDto | string,
+    subcategoriaParam?: string,
   ) {
     const tx = await this.txRepo.findOneBy({ id });
     if (!tx) return null;
 
-    tx.categoria = categoria;
-    tx.subcategoria = subcategoria || null;
-    tx.is_manual = true;
-    tx.matched_rule_id = null;
+    if (typeof dto === 'string') {
+      tx.categoria = dto;
+      tx.subcategoria = subcategoriaParam || null;
+      tx.is_manual = true;
+      tx.matched_rule_id = null;
+    } else {
+      if (dto.categoria !== undefined) tx.categoria = dto.categoria;
+      if (dto.subcategoria !== undefined) tx.subcategoria = dto.subcategoria;
+      if (dto.ignorar_dashboard !== undefined) {
+        tx.ignorar_dashboard = dto.ignorar_dashboard;
+        if (dto.ignore_reason !== undefined) {
+          tx.ignore_reason = dto.ignore_reason;
+        } else if (dto.ignorar_dashboard) {
+          tx.ignore_reason = 'Definido manualmente pelo usuário';
+        } else {
+          tx.ignore_reason = null;
+        }
+      }
+      if (dto.is_custo_fixo !== undefined) tx.is_custo_fixo = dto.is_custo_fixo;
+      if (dto.custo_fixo_grupo !== undefined) tx.custo_fixo_grupo = dto.custo_fixo_grupo;
+      tx.is_manual = true;
+
+      // Se solicitado, criar uma regra de autoclassificação baseada na descrição/título
+      if (dto.createRulePattern && tx.categoria) {
+        const newRule = this.ruleRepo.create({
+          regex: dto.createRulePattern,
+          categoria: tx.categoria,
+          subcategoria: tx.subcategoria || null,
+          banco_escopo: 'qualquer',
+          sinal_escopo: 'qualquer',
+          campo_alvo: 'ambos',
+          priority: 100,
+          enabled: true,
+          set_custo_fixo: tx.is_custo_fixo || false,
+        });
+        await this.ruleRepo.save(newRule);
+        tx.matched_rule_id = newRule.id;
+      }
+    }
 
     return this.txRepo.save(tx);
   }

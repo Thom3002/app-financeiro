@@ -43,6 +43,39 @@ export class Transaction {
   @Column({ type: 'varchar', nullable: true })
   import_id: string | null;
 
+  @Column({ type: 'varchar', length: 20, default: 'MANUAL' })
+  source: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  pluggy_transaction_id: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  pluggy_account_id: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  pluggy_item_id: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  payment_method: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  ignorar_dashboard: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  ignore_reason: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  parcela_atual: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  total_parcelas: number | null;
+
+  @Column({ type: 'boolean', default: false })
+  is_custo_fixo: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  custo_fixo_grupo: string | null;
+
   @CreateDateColumn()
   created_at: Date;
 }

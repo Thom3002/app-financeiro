@@ -12,10 +12,22 @@ export interface SuggestionGroup {
   count: number;
   totalValue: number;
   examples: {
+    id?: string;
     data: string;
     titulo: string;
     descricao: string;
     valor: number;
+    banco?: string;
+    tipo?: string;
+  }[];
+  allTransactions?: {
+    id?: string;
+    data: string;
+    titulo: string;
+    descricao: string;
+    valor: number;
+    banco?: string;
+    tipo?: string;
   }[];
 }
 
@@ -121,7 +133,7 @@ export class ClassificationService {
     private readonly categoriesService: CategoriesService,
   ) {}
 
-  async getSuggestions(): Promise<{
+  async getSuggestions(dataInicio?: string, dataFim?: string): Promise<{
     suggestions: SuggestionGroup[];
     totalUnclassified: number;
   }> {
@@ -130,13 +142,17 @@ export class ClassificationService {
     const activeRules = await this.classifierService.loadRules();
 
     // 2. Busca as transações sem categoria no banco
-    const unclassified = await this.txRepo.find({
-      where: [
-        { categoria: 'Não classificado' as any },
-        { categoria: null as any },
-      ],
-      order: { data: 'DESC' },
-    });
+    const qb = this.txRepo.createQueryBuilder('tx')
+      .where('(tx.categoria = :nc OR tx.categoria IS NULL)', { nc: 'Não classificado' });
+
+    if (dataInicio) {
+      qb.andWhere('tx.data >= :dataInicio', { dataInicio });
+    }
+    if (dataFim) {
+      qb.andWhere('tx.data <= :dataFim', { dataFim });
+    }
+
+    const unclassified = await qb.orderBy('tx.data', 'DESC').getMany();
 
     // 3. Exclui estritamente qualquer transação que já possua matched_rule_id ou corresponda a alguma regra ativa
     const trulyUnclassified = unclassified.filter((tx) => {
@@ -191,10 +207,22 @@ export class ClassificationService {
         count: group.transactions.length,
         totalValue: Math.round(totalValue * 100) / 100,
         examples: group.transactions.slice(0, 3).map((t) => ({
+          id: t.id,
           data: t.data,
           titulo: t.titulo,
           descricao: t.descricao,
           valor: t.valor,
+          banco: t.banco,
+          tipo: t.account_type,
+        })),
+        allTransactions: group.transactions.map((t) => ({
+          id: t.id,
+          data: t.data,
+          titulo: t.titulo,
+          descricao: t.descricao,
+          valor: t.valor,
+          banco: t.banco,
+          tipo: t.account_type,
         })),
       });
     }
@@ -254,6 +282,8 @@ export class ClassificationService {
     categoria: string;
     subcategoria?: string;
     campo_alvo?: string;
+    set_custo_fixo?: boolean;
+    ignorar_dashboard?: boolean;
   }): Promise<{
     ruleCreated: ClassificationRule;
     transactionsClassified: number;
@@ -276,6 +306,8 @@ export class ClassificationService {
       rule.categoria = data.categoria;
       rule.subcategoria = data.subcategoria || null;
       rule.campo_alvo = data.campo_alvo || 'ambos';
+      rule.set_custo_fixo = !!data.set_custo_fixo;
+      rule.ignorar_dashboard = !!data.ignorar_dashboard;
       rule.enabled = true;
 
       // Remove eventuais duplicadas anteriores que possam ter sido criadas antes
@@ -302,6 +334,8 @@ export class ClassificationService {
         priority: maxPriority + 10,
         enabled: true,
         overwrite_manual: false,
+        set_custo_fixo: !!data.set_custo_fixo,
+        ignorar_dashboard: !!data.ignorar_dashboard,
       });
     }
 
