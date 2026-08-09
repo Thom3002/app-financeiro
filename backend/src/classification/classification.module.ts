@@ -4,12 +4,16 @@ import { ClassificationController } from './classification.controller';
 import { ClassificationService } from './classification.service';
 import { Transaction } from '../entities/transaction.entity';
 import { ClassificationRule } from '../entities/classification-rule.entity';
-import { ClassifierService } from '../services/classifier.service';
 import { CategoriesModule } from '../categories/categories.module';
+import { ClassifierModule } from '../services/classifier.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Transaction, ClassificationRule]), CategoriesModule],
+  imports: [
+    TypeOrmModule.forFeature([Transaction, ClassificationRule]),
+    CategoriesModule,
+    ClassifierModule,
+  ],
   controllers: [ClassificationController],
-  providers: [ClassificationService, ClassifierService],
+  providers: [ClassificationService],
 })
 export class ClassificationModule {}

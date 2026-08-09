@@ -6,13 +6,14 @@ import { Transaction } from '../entities/transaction.entity';
 import { ClassificationRule } from '../entities/classification-rule.entity';
 import { ImportLog } from '../entities/import-log.entity';
 import { DedupService } from '../services/dedup.service';
-import { ClassifierService } from '../services/classifier.service';
+import { ClassifierModule } from '../services/classifier.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Transaction, ClassificationRule, ImportLog]),
+    ClassifierModule,
   ],
   controllers: [ImportController],
-  providers: [ImportService, DedupService, ClassifierService],
+  providers: [ImportService, DedupService],
 })
 export class ImportModule {}

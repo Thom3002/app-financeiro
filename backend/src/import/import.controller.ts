@@ -13,12 +13,17 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ImportService } from './import.service';
 
 function decodeCsvBuffer(buffer: Buffer): string {
+  if (!buffer || buffer.length === 0) return '';
   try {
     const decoder = new TextDecoder('utf-8', { fatal: true });
     return decoder.decode(buffer);
   } catch {
-    const decoder = new TextDecoder('windows-1252');
-    return decoder.decode(buffer);
+    try {
+      const decoder = new TextDecoder('windows-1252');
+      return decoder.decode(buffer);
+    } catch {
+      return buffer.toString('latin1');
+    }
   }
 }
 

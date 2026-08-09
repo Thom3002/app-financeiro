@@ -6,6 +6,11 @@ import PluggyConnectModal from '../components/PluggyConnectModal';
 
 const STEPS = ['Banco', 'Upload', 'Preview', 'Resultado'];
 
+const DEFAULT_BANKS = [
+    { id: 'C6', nome: 'C6 Bank', descricao: 'Extrato de conta corrente C6 Bank (CSV)' },
+    { id: 'BRADESCO', nome: 'Bradesco', descricao: 'Extrato Bradesco - Conta Corrente ou Cartão de Crédito (CSV)' },
+];
+
 export default function ImportPage() {
     const { isVisible } = useVisibility();
     const navigate = useNavigate();
@@ -21,7 +26,7 @@ export default function ImportPage() {
     const [syncingAll, setSyncingAll] = useState(false);
 
     // Estado do Importador CSV
-    const [banks, setBanks] = useState([]);
+    const [banks, setBanks] = useState(DEFAULT_BANKS);
     const [selectedBank, setSelectedBank] = useState('');
     const [step, setStep] = useState(0);
     const [file, setFile] = useState(null);
@@ -49,7 +54,9 @@ export default function ImportPage() {
 
     useEffect(() => {
         loadPluggyData();
-        api.getBanks().then(setBanks).catch(() => { });
+        api.getBanks().then(b => {
+            if (Array.isArray(b) && b.length > 0) setBanks(b);
+        }).catch(() => { });
         api.getImportHistory().then(setHistory).catch(() => { });
     }, [loadPluggyData]);
 
@@ -81,11 +88,27 @@ export default function ImportPage() {
     };
 
     // Handlers do CSV
+    const doPreview = async (fileToUse = null) => {
+        const targetFile = fileToUse || file;
+        if (!targetFile || !selectedBank) return;
+        setLoadingCSV(true);
+        setErrorCSV('');
+        try {
+            const data = await api.importPreview(selectedBank, targetFile);
+            setPreview(data);
+            setStep(2);
+        } catch (e) {
+            setErrorCSV(e.message);
+        }
+        setLoadingCSV(false);
+    };
+
     const handleFileChange = (e) => {
         const f = e.target.files?.[0];
         if (f) {
             setFile(f);
             setErrorCSV('');
+            doPreview(f);
         }
     };
 
@@ -96,22 +119,9 @@ export default function ImportPage() {
         if (f) {
             setFile(f);
             setErrorCSV('');
+            doPreview(f);
         }
-    }, []);
-
-    const doPreview = async () => {
-        if (!file || !selectedBank) return;
-        setLoadingCSV(true);
-        setErrorCSV('');
-        try {
-            const data = await api.importPreview(selectedBank, file);
-            setPreview(data);
-            setStep(2);
-        } catch (e) {
-            setErrorCSV(e.message);
-        }
-        setLoadingCSV(false);
-    };
+    }, [selectedBank]);
 
     const doImport = async () => {
         if (!file || !selectedBank) return;
@@ -345,13 +355,20 @@ export default function ImportPage() {
                         <div className="card">
                             <div className="card-header">
                                 <h3 className="card-title">Selecione o banco</h3>
+                                <p className="text-muted text-sm" style={{ margin: 0 }}>
+                                    Clique no seu banco para prosseguir com a importação
+                                </p>
                             </div>
-                            <div className="bank-grid">
+                            <div className="bank-grid" style={{ marginBottom: 20 }}>
                                 {banks.map((b) => (
                                     <div
                                         key={b.id}
                                         className={`bank-card ${selectedBank === b.id ? 'selected' : ''}`}
-                                        onClick={() => setSelectedBank(b.id)}
+                                        onClick={() => {
+                                            setSelectedBank(b.id);
+                                            setStep(1);
+                                        }}
+                                        style={{ cursor: 'pointer' }}
                                     >
                                         <div className="bank-name">{b.nome}</div>
                                         <div className="bank-desc">{b.descricao}</div>
@@ -372,7 +389,10 @@ export default function ImportPage() {
                     {step === 1 && (
                         <div className="card">
                             <div className="card-header">
-                                <h3 className="card-title">Upload do arquivo CSV</h3>
+                                <h3 className="card-title">Upload do arquivo CSV ({selectedBank})</h3>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+                                    Selecione o arquivo baixado do seu banco para pré-visualizar
+                                </p>
                             </div>
                             <div
                                 className={`upload-dropzone ${dragOver ? 'dragover' : ''} ${file ? 'has-file' : ''}`}
@@ -380,35 +400,80 @@ export default function ImportPage() {
                                 onDragLeave={() => setDragOver(false)}
                                 onDrop={handleDrop}
                                 onClick={() => document.getElementById('file-input').click()}
+                                style={{
+                                    border: '2px dashed var(--accent-primary)',
+                                    borderRadius: '12px',
+                                    padding: '40px 24px',
+                                    textAlign: 'center',
+                                    backgroundColor: dragOver ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    margin: '16px 0',
+                                }}
                             >
                                 <input
                                     id="file-input"
                                     type="file"
-                                    accept=".csv"
+                                    accept=".csv,.CSV,.txt,.TXT,.ofx,.OFX,text/csv,text/plain"
                                     onChange={handleFileChange}
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ display: 'none' }}
                                 />
-                                {file ? (
+                                {loadingCSV ? (
+                                    <div style={{ padding: '12px' }}>
+                                        <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
+                                        <h4 style={{ color: 'var(--accent-primary)', marginBottom: '4px' }}>Analisando transações...</h4>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>Aguarde um momento enquanto processamos seu arquivo.</p>
+                                    </div>
+                                ) : file ? (
                                     <div>
+                                        <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📄</div>
                                         <h4 style={{ color: 'var(--accent-primary)', marginBottom: '4px' }}>{file.name}</h4>
-                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{(file.size / 1024).toFixed(1)} KB</p>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>{(file.size / 1024).toFixed(1)} KB</p>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-secondary"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                document.getElementById('file-input').click();
+                                            }}
+                                        >
+                                            Trocar Arquivo
+                                        </button>
                                     </div>
                                 ) : (
-                                    <div>
-                                        <p>Arraste seu arquivo CSV aqui ou clique para selecionar</p>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{ fontSize: '2.5rem' }}>📂</div>
+                                        <p style={{ margin: 0, fontWeight: '600', fontSize: '1rem', color: 'var(--text-primary)' }}>
+                                            Arraste seu arquivo CSV aqui
+                                        </p>
+                                        <p style={{ margin: '0 0 14px 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                            ou clique no botão abaixo para selecionar do seu computador
+                                        </p>
+                                        <button
+                                            type="button"
+                                            className="btn btn-primary btn-lg"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                document.getElementById('file-input').click();
+                                            }}
+                                        >
+                                            📁 Selecionar Arquivo CSV
+                                        </button>
                                     </div>
                                 )}
                             </div>
                             <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
                                 <button className="btn btn-secondary" onClick={() => setStep(0)}>← Voltar</button>
-                                <button
-                                    className="btn btn-primary btn-lg"
-                                    disabled={!file || loadingCSV}
-                                    onClick={doPreview}
-                                >
-                                    {loadingCSV ? 'Analisando...' : 'Pré-visualizar →'}
-                                </button>
+                                {file && (
+                                    <button
+                                        className="btn btn-primary btn-lg"
+                                        disabled={loadingCSV}
+                                        onClick={() => doPreview()}
+                                    >
+                                        {loadingCSV ? 'Analisando...' : 'Pré-visualizar →'}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}

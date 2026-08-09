@@ -7,7 +7,7 @@ import { PluggyItem } from '../entities/pluggy-item.entity';
 import { Category } from '../entities/category.entity';
 import { ClassificationRule } from '../entities/classification-rule.entity';
 import { Setting } from '../entities/setting.entity';
-import { ClassifierService } from '../services/classifier.service';
+import { ClassifierModule } from '../services/classifier.module';
 
 @Module({
   imports: [
@@ -18,9 +18,10 @@ import { ClassifierService } from '../services/classifier.service';
       ClassificationRule,
       Setting,
     ]),
+    ClassifierModule,
   ],
   controllers: [PluggyController],
-  providers: [PluggyService, ClassifierService],
+  providers: [PluggyService],
   exports: [PluggyService],
 })
 export class PluggyModule {}

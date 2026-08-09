@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.10] - 2026-08-09
+
+### Fixed
+- **Fluxo de Importação CSV e Seleção de Arquivo**:
+  - Adicionada exibição fixa dos bancos padrão (`C6 Bank`, `Bradesco`) com avanço automático para o passo de upload ao clicar.
+  - Adicionado botão proeminente **`📁 Selecionar Arquivo CSV`** e suporte expandido a extensões (`.csv`, `.txt`, `.ofx`).
+  - Análise e pré-visualização automática ao escolher o arquivo no explorador de arquivos.
+  - Suporte a codificação `windows-1252`/`latin1` e quebras de linha `\r` (Mac CR) em extratos do Bradesco.
+- **Infraestrutura e Ajuste de Proxy**:
+  - Alvo do proxy no `vite.config.js` corrigido de `http://backend:8000` para `http://localhost:8000`, eliminando erros `ENOTFOUND backend` (500).
+  - Isolamento do `ClassifierModule` no NestJS, resolvendo estouro de pilha por dependência circular.
+  - Recompilação do binário nativo do `better-sqlite3` para a versão ABI do Electron.
+
 ## [1.1.9] - 2026-08-09
 
 ### Added
