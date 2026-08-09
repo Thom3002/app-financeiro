@@ -386,6 +386,7 @@ export default function ImportPage() {
                                     type="file"
                                     accept=".csv"
                                     onChange={handleFileChange}
+                                    onClick={(e) => e.stopPropagation()}
                                     style={{ display: 'none' }}
                                 />
                                 {file ? (

@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
   Query,
@@ -49,6 +50,11 @@ export class TransactionsController {
     return this.txService.findAll(filters);
   }
 
+  @Post('reset')
+  async reset(@Body('type') type?: 'transactions' | 'full') {
+    return this.txService.resetApp(type || 'transactions');
+  }
+
   @Patch(':id')
   async updateCategory(
     @Param('id') id: string,
@@ -69,3 +75,4 @@ export class TransactionsController {
     return this.txService.getDistinctBanks();
   }
 }
+

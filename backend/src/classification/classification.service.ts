@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
@@ -99,27 +99,8 @@ function extractKeyword(texts: string[]): string {
     }
   }
 
-  const noise = new Set([
-    'de', 'do', 'da', 'dos', 'das', 'para', 'por', 'com', 'sem',
-    'que', 'uma', 'bra', 'pix', 'recebido', 'enviado', 'transf',
-    'enviada', 'debito', 'cartao', 'credito', 'rever', 'par', 'deb',
-    'sp', 'rj', 'mg', 'rs', 'pr', 'sc', 'ba', 'pe', 'ce', 'go', 'df',
-    'pagamento', 'pagto', 'boleto', 'compra', 'transferencia',
-  ]);
-
-  let best = '';
-  let bestScore = 0;
-  for (const [word, count] of wordCounts) {
-    // Ignora o termo se qualquer uma das palavras contidas nele for ruído
-    if (word.split(' ').some((w) => noise.has(w))) continue;
-    const score = count * (word.includes(' ') ? 2 : 1);
-    if (score > bestScore || (score === bestScore && word.length > best.length)) {
-      best = word;
-      bestScore = score;
-    }
-  }
-
-  return best;
+  return Array.from(wordCounts.entries())
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || '';
 }
 
 @Injectable()
@@ -133,68 +114,45 @@ export class ClassificationService {
     private readonly categoriesService: CategoriesService,
   ) {}
 
-  async getSuggestions(dataInicio?: string, dataFim?: string): Promise<{
+  async getSuggestions(
+    dataInicio?: string,
+    dataFim?: string,
+  ): Promise<{
     suggestions: SuggestionGroup[];
     totalUnclassified: number;
   }> {
-    // 1. Força a reclassificação de todas as transações com as regras mais recentes
-    await this.classifierService.reclassifyAll();
-    const activeRules = await this.classifierService.loadRules();
-
-    // 2. Busca as transações sem categoria no banco
-    const qb = this.txRepo.createQueryBuilder('tx')
-      .where('(tx.categoria = :nc OR tx.categoria IS NULL)', { nc: 'Não classificado' });
-
+    const qb = this.txRepo.createQueryBuilder('tx');
+    qb.where("(tx.categoria IS NULL OR tx.categoria = '' OR tx.categoria = 'Não classificado')");
     if (dataInicio) {
       qb.andWhere('tx.data >= :dataInicio', { dataInicio });
     }
     if (dataFim) {
       qb.andWhere('tx.data <= :dataFim', { dataFim });
     }
+    const trulyUnclassified = await qb.getMany();
 
-    const unclassified = await qb.orderBy('tx.data', 'DESC').getMany();
-
-    // 3. Exclui estritamente qualquer transação que já possua matched_rule_id ou corresponda a alguma regra ativa
-    const trulyUnclassified = unclassified.filter((tx) => {
-      if (tx.is_manual) return false;
-      if (tx.matched_rule_id) return false;
-      const res = this.classifierService.classifyTransaction(tx, activeRules);
-      return !res.matched_rule_id && (res.categoria === 'Não classificado' || !res.categoria);
-    });
-
-    if (trulyUnclassified.length === 0) {
-      return { suggestions: [], totalUnclassified: 0 };
-    }
-
-    const groups = new Map<
+    const groupsMap = new Map<
       string,
-      { transactions: Transaction[]; key: string }
+      { key: string; transactions: Transaction[] }
     >();
 
     for (const tx of trulyUnclassified) {
-      // Prioriza encontrar o texto mais descritivo do estabelecimento/favorecido
-      const fullText = [tx.titulo, tx.descricao].filter(Boolean).join(' ');
-      const cleaned = stripBankNoise(fullText) || fullText;
-      const key = normalizeForGrouping(cleaned);
-
+      const key = normalizeForGrouping(tx.titulo || tx.descricao || '');
       if (!key) continue;
 
-      if (!groups.has(key)) {
-        groups.set(key, { transactions: [], key });
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, { key, transactions: [] });
       }
-      groups.get(key)!.transactions.push(tx);
+      groupsMap.get(key)!.transactions.push(tx);
     }
 
     const suggestions: SuggestionGroup[] = [];
 
-    for (const [, group] of groups) {
-      if (group.transactions.length < 1) continue;
+    for (const group of groupsMap.values()) {
+      if (group.transactions.length < 2) continue;
 
-      const texts = group.transactions.map(
-        (t) => (t.titulo || '') + ' ' + (t.descricao || ''),
-      );
-      const keyword = extractKeyword(texts);
-      if (!keyword) continue;
+      const texts = group.transactions.map((t) => t.titulo || t.descricao || '');
+      const keyword = extractKeyword(texts) || group.key;
 
       const totalValue = group.transactions.reduce(
         (sum, t) => sum + Math.abs(t.valor),
@@ -289,6 +247,14 @@ export class ClassificationService {
     transactionsClassified: number;
     conflicts: any[];
   }> {
+    const cat = data.categoria ? data.categoria.trim() : '';
+    if (!cat || cat === 'Não classificado') {
+      throw new BadRequestException(
+        "Selecione uma categoria válida para criar a regra.",
+      );
+    }
+    data.categoria = cat;
+
     const regex = this.classifierService.keywordsToRegex(data.keywords);
 
     // Verifica se já existem regras com o mesmo regex exato no banco

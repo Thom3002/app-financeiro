@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.9] - 2026-08-09
+
+### Added
+- **Minha Carteira e Exportação Excel (.xlsx)**:
+  - Adicionada aba **Receitas por categoria** com gráfico Donut de entradas e tabela proporcional em R$ e %.
+  - Botão de exportação dos dados do Dashboard para arquivo Excel (`.xlsx`) com duas abas separadas (**Receitas** e **Despesas**).
+  - Filtro multi-seleção de categorias no Dashboard com busca rápida por texto.
+- **Opção de Reset do Aplicativo**:
+  - Painel de Zona de Perigo em Configurações com modal de confirmação para reset de transações/extratos ou reset completo do app.
+
+### Fixed
+- **Validação de Regras e Sugestões**:
+  - Rejeição estrita e mensagem de erro ao tentar criar regras com a categoria `"Não classificado"` ou vazia.
+  - Validação de unicidade e bloqueio com erro de conflito para regexes duplicados em regras.
+  - Otimização do processo de importação CSV em lotes de 100 registros (`orIgnore()`), resolvendo travamentos.
+  - Recarregamento automático da aba de Sugestões ao excluir/alterar regras e preservação do cursor (`scroll`) nas ações de classificação.
+  - Ordenação alfabética (A-Z) de categorias em todos os seletores e filtros.
+
 ## [1.1.8] - 2026-08-01
 
 ### Added

@@ -48,6 +48,8 @@ export const api = {
     },
     updateTransactionCategory: (id, data) =>
         request(`/transactions/${id}`, { method: 'PATCH', body: data }),
+    resetApp: (type = 'transactions') =>
+        request('/transactions/reset', { method: 'POST', body: { type } }),
     getDistinctCategories: () => request('/transactions/categories'),
     getDistinctBanks: () => request('/transactions/banks'),
 
@@ -82,6 +84,23 @@ export const api = {
             Object.entries(params).filter(([, v]) => v),
         ).toString();
         return request(`/dashboard/timeline${qs ? '?' + qs : ''}`);
+    },
+    exportDashboardExcel: async (params = {}) => {
+        const qs = new URLSearchParams(
+            Object.entries(params).filter(([, v]) => v),
+        ).toString();
+        const url = `${API_BASE}/dashboard/export-excel${qs ? '?' + qs : ''}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Erro ao exportar arquivo Excel');
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = 'Dashboard_Financeiro.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
     },
     getDashboardDrilldown: (categoria, params = {}) => {
         const qs = new URLSearchParams(

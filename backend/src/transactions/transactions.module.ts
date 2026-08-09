@@ -4,12 +4,24 @@ import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
 import { Transaction } from '../entities/transaction.entity';
 import { Category } from '../entities/category.entity';
-
 import { ClassificationRule } from '../entities/classification-rule.entity';
+import { ImportLog } from '../entities/import-log.entity';
+import { PluggyItem } from '../entities/pluggy-item.entity';
+import { Setting } from '../entities/setting.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Transaction, Category, ClassificationRule])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Transaction,
+      Category,
+      ClassificationRule,
+      ImportLog,
+      PluggyItem,
+      Setting,
+    ]),
+  ],
   controllers: [TransactionsController],
   providers: [TransactionsService],
 })
 export class TransactionsModule {}
+

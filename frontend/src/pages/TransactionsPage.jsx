@@ -78,17 +78,17 @@ export default function TransactionsPage() {
     }, [loadData]);
 
     useEffect(() => {
-        api.getDistinctCategories().then(setCategories).catch(() => { });
+        api.getDistinctCategories().then(cats => setCategories(cats.sort((a, b) => a.localeCompare(b, 'pt-BR')))).catch(() => { });
         api.getDistinctBanks().then(setBanks).catch(() => { });
         api.getCategoriesFlat().then(cats => {
-            setAllCategories(cats.filter(c => !c.parent_id));
+            setAllCategories(cats.filter(c => !c.parent_id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
         }).catch(() => { });
     }, []);
 
     const refreshCategories = () => {
-        api.getDistinctCategories().then(setCategories).catch(() => { });
+        api.getDistinctCategories().then(cats => setCategories(cats.sort((a, b) => a.localeCompare(b, 'pt-BR')))).catch(() => { });
         api.getCategoriesFlat().then(cats => {
-            setAllCategories(cats.filter(c => !c.parent_id));
+            setAllCategories(cats.filter(c => !c.parent_id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
         }).catch(() => { });
     };
 
@@ -128,6 +128,7 @@ export default function TransactionsPage() {
 
     const saveEdit = async () => {
         if (!editingTx) return;
+        const scrollY = window.scrollY;
         try {
             await api.updateTransactionCategory(editingTx.id, {
                 categoria: editValues.categoria || null,
@@ -136,11 +137,13 @@ export default function TransactionsPage() {
                 is_custo_fixo: editValues.is_custo_fixo,
                 createRule: editValues.saveRule,
                 rulePattern: editValues.saveRule ? editValues.createRulePattern : undefined,
+                is_manual: true,
             });
             setEditingTx(null);
-            loadData();
+            await loadData();
             refreshCategories();
             window.dispatchEvent(new Event('unclassified-count-changed'));
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
             alert('Erro ao salvar transação: ' + e.message);
         }
@@ -148,12 +151,14 @@ export default function TransactionsPage() {
 
     const toggleIgnorarDashboard = async (tx, e) => {
         e.stopPropagation();
+        const scrollY = window.scrollY;
         try {
             await api.updateTransactionCategory(tx.id, {
                 ignorar_dashboard: !tx.ignorar_dashboard,
                 ignore_reason: !tx.ignorar_dashboard ? 'Definido manualmente pelo usuário' : null,
             });
-            loadData();
+            await loadData();
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (err) {
             console.error(err);
         }
@@ -193,25 +198,23 @@ export default function TransactionsPage() {
     const saveRule = async () => {
         if (!ruleKeywords.trim() || !ruleCategoria.trim() || ruleSaving) return;
         setRuleSaving(true);
+        const scrollY = window.scrollY;
         try {
             const result = await api.applyClassification({
                 keywords: ruleKeywords,
                 categoria: ruleCategoria,
                 subcategoria: ruleSubcategoria || undefined,
+                targetTxId: ruleTarget?.id,
             });
-            if (result.conflicts && result.conflicts.length > 0) {
-                setConflicts(result.conflicts);
-            }
-            setSuccessMsg(
-                `Regra criada! ${result.transactionsClassified} transações reclassificadas.`
-            );
-            cancelRule();
-            loadData();
+            setRuleTarget(null);
+            setSuccessMsg(`Regra salva! ${result.totalChanged} transação(ões) classificada(s).`);
+            await loadData();
             refreshCategories();
             window.dispatchEvent(new Event('unclassified-count-changed'));
             setTimeout(() => setSuccessMsg(''), 4000);
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
-            alert('Erro: ' + e.message);
+            alert('Erro ao salvar regra: ' + e.message);
         }
         setRuleSaving(false);
     };

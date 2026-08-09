@@ -145,6 +145,11 @@ export default function DashboardPage() {
     const [dateFilters, setDateFilters] = useState(() => getLast30DaysDates());
     const [activePreset, setActivePreset] = useState('last30Days');
 
+    // Estado de filtro multi-categoria nos gráficos
+    const [selectedCategories, setSelectedCategories] = useState([]);
+    const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
+    const [catSearch, setCatSearch] = useState('');
+
     // Estado da Aba de Gráfico selecionada ('category' | 'monthly')
     const [activeTab, setActiveTab] = useState('category');
 
@@ -189,17 +194,19 @@ export default function DashboardPage() {
 
     const saveEdit = async () => {
         if (!editingTx) return;
+        const scrollY = window.scrollY;
         try {
             await api.updateTransactionCategory(editingTx.id, {
                 categoria: editValues.categoria || null,
                 subcategoria: editValues.subcategoria || null,
                 ignorar_dashboard: editValues.ignorar_dashboard,
                 is_custo_fixo: editValues.is_custo_fixo,
+                is_manual: true,
             });
             setEditingTx(null);
-            loadDashboardData();
-            loadTransactions();
+            await Promise.all([loadDashboardData(), loadTransactions()]);
             window.dispatchEvent(new Event('unclassified-count-changed'));
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
             alert('Erro ao salvar transação: ' + e.message);
         }
@@ -228,9 +235,10 @@ export default function DashboardPage() {
     const loadDashboardData = useCallback(async () => {
         setLoadingSummary(true);
         try {
+            const categoriasParam = selectedCategories.length > 0 ? selectedCategories.join(',') : undefined;
             const [s, t] = await Promise.all([
-                api.getDashboardSummary(dateFilters),
-                api.getDashboardTimeline(getLast12MonthsDates()),
+                api.getDashboardSummary({ ...dateFilters, categorias: categoriasParam }),
+                api.getDashboardTimeline({ ...getLast12MonthsDates(), categorias: categoriasParam }),
             ]);
             setSummary(s);
             setTimeline(t);
@@ -238,7 +246,7 @@ export default function DashboardPage() {
             console.error('Erro ao carregar dados do dashboard:', e);
         }
         setLoadingSummary(false);
-    }, [dateFilters]);
+    }, [dateFilters, selectedCategories]);
 
     useEffect(() => {
         loadDashboardData();
@@ -261,7 +269,7 @@ export default function DashboardPage() {
             const result = await api.getTransactions({
                 dataInicio: dateFilters.dataInicio,
                 dataFim: dateFilters.dataFim,
-                categoria: txFilters.categoria || undefined,
+                categoria: txFilters.categoria || (selectedCategories.length === 1 ? selectedCategories[0] : undefined),
                 busca: txFilters.busca || undefined,
                 ordem: txFilters.ordem,
                 page: txFilters.page,
@@ -272,7 +280,7 @@ export default function DashboardPage() {
             console.error('Erro ao carregar transações da tabela:', e);
         }
         setTxLoading(false);
-    }, [dateFilters, txFilters]);
+    }, [dateFilters, txFilters, selectedCategories]);
 
     useEffect(() => {
         loadTransactions();
@@ -311,7 +319,21 @@ export default function DashboardPage() {
         setTxFilters((prev) => ({ ...prev, page: 1 }));
     };
 
-    // Dados de categorias para o gráfico Donut (Somente Saídas/Despesas com fallback para Não classificado)
+    // Estado de exportação Excel
+    const [exportingExcel, setExportingExcel] = useState(false);
+
+    const handleExportExcel = async () => {
+        setExportingExcel(true);
+        try {
+            const categoriasParam = selectedCategories.length > 0 ? selectedCategories.join(',') : undefined;
+            await api.exportDashboardExcel({ ...dateFilters, categorias: categoriasParam });
+        } catch (err) {
+            alert('Erro ao exportar planilha Excel: ' + err.message);
+        }
+        setExportingExcel(false);
+    };
+
+    // Dados de categorias para o gráfico Donut (Somente Saídas/Despesas)
     const catData = (summary?.byCategory || [])
         .filter((c) => (parseFloat(c.total_saidas) || 0) > 0)
         .map((c) => ({
@@ -322,6 +344,18 @@ export default function DashboardPage() {
         }));
 
     const totalSaidasCategorias = catData.reduce((acc, c) => acc + c.saidas, 0);
+
+    // Dados de categorias para o gráfico Donut (Somente Entradas/Receitas)
+    const incomeCatData = (summary?.byCategory || [])
+        .filter((c) => (parseFloat(c.total_entradas) || 0) > 0)
+        .map((c) => ({
+            name: c.categoria || 'Não classificado',
+            entradas: parseFloat(c.total_entradas) || 0,
+            saidas: parseFloat(c.total_saidas) || 0,
+            count: parseInt(c.count, 10) || 0,
+        }));
+
+    const totalEntradasCategorias = incomeCatData.reduce((acc, c) => acc + c.entradas, 0);
 
     // Ordenação dinâmica no cabeçalho da tabela
     const toggleSort = (field) => {
@@ -345,7 +379,18 @@ export default function DashboardPage() {
             {/* Header da Página e Filtros Globais de Período */}
             <div className="page-header flex-between" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
                 <div>
-                    <h2>💼 Minha Carteira</h2>
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        💼 Minha Carteira
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={handleExportExcel}
+                            disabled={exportingExcel}
+                            title="Exportar dados do período em planilha Excel (.xlsx) com abas de Receitas e Despesas"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', padding: '5px 12px' }}
+                        >
+                            📊 {exportingExcel ? 'Gerando Excel...' : 'Exportar Excel (.xlsx)'}
+                        </button>
+                    </h2>
                     <p>Acompanhe suas finanças em tempo real.</p>
                 </div>
 
@@ -396,7 +441,117 @@ export default function DashboardPage() {
                         </button>
                     </div>
 
-                    <div className="flex gap-2" style={{ alignItems: 'center' }}>
+                    <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {/* Seletor Multi-Categoria */}
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setIsCatDropdownOpen(!isCatDropdownOpen)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    borderColor: selectedCategories.length > 0 ? 'var(--accent-primary)' : 'var(--border-color)',
+                                    backgroundColor: selectedCategories.length > 0 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                    color: selectedCategories.length > 0 ? 'var(--accent-primary)' : 'var(--text-primary)',
+                                    fontWeight: selectedCategories.length > 0 ? '600' : 'normal',
+                                }}
+                            >
+                                🏷️ {selectedCategories.length === 0
+                                    ? 'Todas as Categorias'
+                                    : `${selectedCategories.length} Categoria(s)`}
+                                <span style={{ fontSize: '10px' }}>▼</span>
+                            </button>
+
+                            {isCatDropdownOpen && (
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        right: 0,
+                                        marginTop: '6px',
+                                        width: '280px',
+                                        maxHeight: '340px',
+                                        backgroundColor: 'var(--bg-card, #1e293b)',
+                                        border: '1px solid var(--border-color, #334155)',
+                                        borderRadius: '8px',
+                                        boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                                        zIndex: 100,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        padding: '12px',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Filtrar por Categorias</span>
+                                        {selectedCategories.length > 0 && (
+                                            <button
+                                                style={{ border: 'none', background: 'transparent', color: 'var(--accent-danger, #ef4444)', fontSize: '11px', cursor: 'pointer' }}
+                                                onClick={() => setSelectedCategories([])}
+                                            >
+                                                Limpar ({selectedCategories.length})
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="Buscar categoria..."
+                                        value={catSearch}
+                                        onChange={(e) => setCatSearch(e.target.value)}
+                                        style={{ marginBottom: '8px', padding: '4px 8px', fontSize: '12px' }}
+                                    />
+
+                                    <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px' }}>
+                                        {categoriesList
+                                            .filter((cat) => cat.toLowerCase().includes(catSearch.toLowerCase()))
+                                            .map((cat) => {
+                                                const isChecked = selectedCategories.includes(cat);
+                                                return (
+                                                    <label
+                                                        key={cat}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            fontSize: '13px',
+                                                            padding: '4px 6px',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={() => {
+                                                                if (isChecked) {
+                                                                    setSelectedCategories(selectedCategories.filter((c) => c !== cat));
+                                                                } else {
+                                                                    setSelectedCategories([...selectedCategories, cat]);
+                                                                }
+                                                            }}
+                                                        />
+                                                        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {cat}
+                                                        </span>
+                                                    </label>
+                                                );
+                                            })}
+                                    </div>
+                                    
+                                    <button
+                                        className="btn btn-primary btn-sm"
+                                        style={{ marginTop: '10px', width: '100%', textAlign: 'center' }}
+                                        onClick={() => setIsCatDropdownOpen(false)}
+                                    >
+                                        Aplicar Filtro
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
                         <span className="text-xs text-muted">de</span>
                         <input
                             type="date"
@@ -462,6 +617,12 @@ export default function DashboardPage() {
                         onClick={() => setActiveTab('category')}
                     >
                         Despesas por categoria
+                    </button>
+                    <button
+                        className={`dashboard-tab ${activeTab === 'income_category' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('income_category')}
+                    >
+                        Receitas por categoria
                     </button>
                     <button
                         className={`dashboard-tab ${activeTab === 'monthly' ? 'active' : ''}`}
@@ -569,6 +730,126 @@ export default function DashboardPage() {
                                                 <div className="text-right" style={{ fontSize: '0.85rem' }}>
                                                     <span className="font-bold valor-negativo" style={{ marginRight: 6 }}>
                                                         {formatValue(c.saidas)}
+                                                    </span>
+                                                    <span className="text-muted text-xs">({pct}%)</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                        <div className="flex-between mt-2" style={{ alignItems: 'center' }}>
+                            {summary?.ignoredCategories?.length > 0 ? (
+                                <span className="text-xs text-muted" title={`Categorias desconsideradas nos totais: ${summary.ignoredCategories.join(', ')}`}>
+                                    ℹ️ Algumas categorias não são consideradas no gráfico ({summary.ignoredCategories.join(', ')})
+                                </span>
+                            ) : <span />}
+                            <span className="text-xs text-muted">
+                                💡 <em>Dica: clique em uma fatia ou categoria para filtrar a tabela.</em>
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Conteúdo da Aba 2: Receitas por Categoria (Gráfico Donut de Entradas) */}
+                {activeTab === 'income_category' && (
+                    <div>
+                        {incomeCatData.length === 0 ? (
+                            <div className="empty-state" style={{ padding: '40px 0' }}>
+                                <h3>Sem receitas categorizadas no período selecionado</h3>
+                            </div>
+                        ) : (
+                            <div className="flex gap-6" style={{ flexWrap: 'wrap', alignItems: 'center', minHeight: 340 }}>
+                                <div style={{ flex: '1 1 340px', height: 320, position: 'relative' }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={incomeCatData}
+                                                dataKey="entradas"
+                                                nameKey="name"
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={70}
+                                                outerRadius={110}
+                                                paddingAngle={2}
+                                                style={{ cursor: 'pointer', outline: 'none' }}
+                                                onClick={handlePieSliceClick}
+                                                label={({ percent }) => (percent > 0.03 ? `${(percent * 100).toFixed(1)}%` : '')}
+                                                labelLine={false}
+                                            >
+                                                {incomeCatData.map((entry, index) => {
+                                                    const isSelected = txFilters.categoria === entry.name;
+                                                    return (
+                                                        <Cell
+                                                            key={`cell-income-${index}`}
+                                                            fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+                                                            stroke={isSelected ? '#ffffff' : 'transparent'}
+                                                            strokeWidth={isSelected ? 3 : 1}
+                                                            opacity={txFilters.categoria && !isSelected ? 0.4 : 1}
+                                                        />
+                                                    );
+                                                })}
+                                            </Pie>
+                                            <Tooltip
+                                                contentStyle={{
+                                                    background: '#111827',
+                                                    border: '1px solid rgba(255,255,255,0.15)',
+                                                    borderRadius: 8,
+                                                    color: '#f1f5f9',
+                                                }}
+                                                itemStyle={{ color: '#f1f5f9' }}
+                                                labelStyle={{ color: '#f1f5f9' }}
+                                                formatter={(value, name) => [
+                                                    formatValue(value),
+                                                    `${name} (${((value / (totalEntradasCategorias || 1)) * 100).toFixed(1)}%)`,
+                                                ]}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                {/* Legenda e Seleção Rápida de Receitas */}
+                                <div style={{ flex: '1 1 300px', maxHeight: 320, overflowY: 'auto' }}>
+                                    <div className="flex-between mb-3" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: 8 }}>
+                                        <span className="text-xs text-muted uppercase font-bold">Categoria de Receita</span>
+                                        <span className="text-xs text-muted uppercase font-bold">Total / %</span>
+                                    </div>
+                                    {incomeCatData.map((c, i) => {
+                                        const pct = totalEntradasCategorias > 0 ? ((c.entradas / totalEntradasCategorias) * 100).toFixed(1) : '0';
+                                        const isSelected = txFilters.categoria === c.name;
+                                        return (
+                                            <div
+                                                key={i}
+                                                onClick={() => handlePieSliceClick(c)}
+                                                className="flex-between"
+                                                style={{
+                                                    padding: '6px 10px',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    background: isSelected ? 'rgba(52, 211, 153, 0.15)' : 'transparent',
+                                                    border: isSelected ? '1px solid var(--green, #10b981)' : '1px solid transparent',
+                                                    marginBottom: 4,
+                                                    transition: 'all 0.15s ease',
+                                                }}
+                                            >
+                                                <div className="flex gap-2" style={{ alignItems: 'center' }}>
+                                                    <span
+                                                        style={{
+                                                            width: 10,
+                                                            height: 10,
+                                                            borderRadius: '50%',
+                                                            backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+                                                            display: 'inline-block',
+                                                        }}
+                                                    />
+                                                    <span style={{ fontSize: '0.85rem', fontWeight: isSelected ? 600 : 400 }}>
+                                                        {c.name}
+                                                    </span>
+                                                </div>
+                                                <div className="text-right" style={{ fontSize: '0.85rem' }}>
+                                                    <span className="font-bold valor-positivo" style={{ marginRight: 6 }}>
+                                                        {formatValue(c.entradas)}
                                                     </span>
                                                     <span className="text-muted text-xs">({pct}%)</span>
                                                 </div>
@@ -855,13 +1136,24 @@ export default function DashboardPage() {
                                                 </td>
                                                 <td>
                                                     {t.categoria ? (
-                                                        <span
-                                                            className="badge badge-accent"
-                                                            style={{ cursor: 'pointer' }}
-                                                            onClick={() => setTxFilters((prev) => ({ ...prev, categoria: t.categoria, page: 1 }))}
-                                                        >
-                                                            {t.categoria}
-                                                        </span>
+                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span
+                                                                className="badge badge-accent"
+                                                                style={{ cursor: 'pointer' }}
+                                                                onClick={() => setTxFilters((prev) => ({ ...prev, categoria: t.categoria, page: 1 }))}
+                                                            >
+                                                                {t.categoria}
+                                                            </span>
+                                                            {t.is_manual && (
+                                                                <span
+                                                                    className="badge"
+                                                                    style={{ backgroundColor: 'rgba(234, 179, 8, 0.15)', color: '#ca8a04', border: '1px solid rgba(234, 179, 8, 0.3)', fontSize: '10px', padding: '2px 5px' }}
+                                                                    title="Classificada manualmente pelo usuário (protegida contra novas regras)"
+                                                                >
+                                                                    ✋ Manual
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     ) : (
                                                         <span className="text-muted">—</span>
                                                     )}

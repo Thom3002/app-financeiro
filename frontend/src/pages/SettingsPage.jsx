@@ -527,6 +527,132 @@ export default function SettingsPage() {
                 )}
 
                 <PluggySettingsPanel />
+                <ResetAppPanel />
+            </div>
+        </div>
+    );
+}
+
+function ResetAppPanel() {
+    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+    const [resetType, setResetType] = useState('transactions'); // 'transactions' | 'full'
+    const [resetting, setResetting] = useState(false);
+    const [msg, setMsg] = useState({ text: '', type: '' });
+
+    const handleOpenReset = (type) => {
+        setResetType(type);
+        setConfirmModalOpen(true);
+    };
+
+    const handleConfirmReset = async () => {
+        setResetting(true);
+        setMsg({ text: '', type: '' });
+        try {
+            await api.resetApp(resetType);
+            setMsg({
+                text: resetType === 'full'
+                    ? 'Aplicativo resetado com sucesso! Todos os dados foram limpos.'
+                    : 'Transações e históricos zerados com sucesso!',
+                type: 'success',
+            });
+            window.dispatchEvent(new Event('unclassified-count-changed'));
+            setConfirmModalOpen(false);
+        } catch (err) {
+            setMsg({ text: 'Erro ao resetar: ' + err.message, type: 'danger' });
+        }
+        setResetting(false);
+    };
+
+    return (
+        <div className="card" style={{ marginTop: '20px', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+            <div className="card-header" style={{ borderBottomColor: 'rgba(239, 68, 68, 0.2)' }}>
+                <h3 className="card-title" style={{ color: 'var(--accent-danger, #ef4444)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    ⚠️ Zona de Perigo (Reset do Aplicativo)
+                </h3>
+            </div>
+            <div className="card-body">
+                <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                    Utilize as opções abaixo para zerar o banco de dados. Atenção: estas ações são irreversíveis.
+                </p>
+
+                {msg.text && (
+                    <div className={`alert alert-${msg.type}`} style={{ marginBottom: '16px' }}>
+                        {msg.text}
+                    </div>
+                )}
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                    <button
+                        className="btn btn-danger"
+                        onClick={() => handleOpenReset('transactions')}
+                        disabled={resetting}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                        🗑️ Resetar Apenas Transações
+                    </button>
+                    <button
+                        className="btn"
+                        onClick={() => handleOpenReset('full')}
+                        disabled={resetting}
+                        style={{
+                            backgroundColor: '#991b1b',
+                            color: '#fff',
+                            border: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                        }}
+                    >
+                        ⚠️ Resetar Aplicativo Inteiro
+                    </button>
+                </div>
+
+                {confirmModalOpen && (
+                    <div
+                        style={{
+                            position: 'fixed',
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.75)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 9999,
+                            padding: '16px',
+                        }}
+                        onClick={() => setConfirmModalOpen(false)}
+                    >
+                        <div
+                            className="card"
+                            style={{ maxWidth: '500px', width: '100%', padding: '24px' }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 style={{ color: 'var(--accent-danger, #ef4444)', marginTop: 0, marginBottom: '12px' }}>
+                                Confirmar Reset de Dados?
+                            </h3>
+                            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5' }}>
+                                {resetType === 'full'
+                                    ? 'Tem certeza de que deseja resetar o aplicativo inteiro? Isso excluirá PERMANENTEMENTE todas as transações, conexões do Pluggy, regras de classificação, categorias customizadas e configurações.'
+                                    : 'Tem certeza de que deseja resetar todas as transações? Isso excluirá PERMANENTEMENTE o histórico de transações, extratos importados e conexões salvas do Pluggy (regras e categorias serão mantidas).'}
+                            </p>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => setConfirmModalOpen(false)}
+                                    disabled={resetting}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn btn-danger"
+                                    onClick={handleConfirmReset}
+                                    disabled={resetting}
+                                >
+                                    {resetting ? 'Resetando...' : 'Sim, Resetar Agora'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

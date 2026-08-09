@@ -37,7 +37,7 @@ export default function ClassifyPage() {
 
     const loadCategories = () => {
         api.getCategoriesFlat().then(cats => {
-            setAllCategories(cats.filter(c => !c.parent_id));
+            setAllCategories(cats.filter(c => !c.parent_id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
         }).catch(() => { });
     };
 
@@ -94,6 +94,15 @@ export default function ClassifyPage() {
     useEffect(() => {
         loadSuggestions();
         loadCategories();
+
+        const handleUnclassifiedChanged = () => {
+            loadSuggestions();
+        };
+
+        window.addEventListener('unclassified-count-changed', handleUnclassifiedChanged);
+        return () => {
+            window.removeEventListener('unclassified-count-changed', handleUnclassifiedChanged);
+        };
     }, []);
 
     const handlePreviewKeyword = async () => {
@@ -111,6 +120,7 @@ export default function ClassifyPage() {
     const handleApplyKeyword = async () => {
         if (!kwKeywords.trim() || !kwCategoria.trim() || kwSaving) return;
         setKwSaving(true);
+        const scrollY = window.scrollY;
         try {
             const result = await api.applyClassification({
                 keywords: kwKeywords,
@@ -134,6 +144,7 @@ export default function ClassifyPage() {
             await loadSuggestions();
             loadCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
             alert('Erro: ' + e.message);
         }
@@ -164,6 +175,7 @@ export default function ClassifyPage() {
     const handleApplySuggestion = async (suggestion, idx) => {
         const keywordToApply = (customKeywords[idx] !== undefined ? customKeywords[idx] : suggestion.keyword).trim();
         if (!sugCategoria.trim() || !keywordToApply) return;
+        const scrollY = window.scrollY;
         try {
             const result = await api.applyClassification({
                 keywords: keywordToApply,
@@ -183,12 +195,14 @@ export default function ClassifyPage() {
             await loadSuggestions();
             loadCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
             alert('Erro: ' + e.message);
         }
     };
 
     const handleReorder = async (ruleIds) => {
+        const scrollY = window.scrollY;
         try {
             await api.reorderRules(ruleIds);
             setConflicts(null);
@@ -196,6 +210,7 @@ export default function ClassifyPage() {
             await loadSuggestions();
             loadCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
             alert('Erro: ' + e.message);
         }

@@ -71,20 +71,31 @@ export class ImportService {
       return tx;
     });
 
-    // 4. Insert (using individual inserts to handle any remaining conflicts gracefully)
-    let insertedCount = 0;
-    for (const tx of classifiedTransactions) {
+    // 4. Batch Insert in chunks of 100 to execute quickly and prevent database/event loop freezing
+    for (let i = 0; i < classifiedTransactions.length; i += 100) {
+      const chunk = classifiedTransactions.slice(i, i + 100);
       try {
         await this.txRepo
           .createQueryBuilder()
           .insert()
           .into(Transaction)
-          .values(tx)
+          .values(chunk)
           .orIgnore()
           .execute();
-        insertedCount++;
       } catch {
-        // Skip this transaction if it still fails
+        for (const tx of chunk) {
+          try {
+            await this.txRepo
+              .createQueryBuilder()
+              .insert()
+              .into(Transaction)
+              .values(tx)
+              .orIgnore()
+              .execute();
+          } catch {
+            // Skip failed row
+          }
+        }
       }
     }
 
@@ -99,12 +110,22 @@ export class ImportService {
     });
     await this.logRepo.save(log);
 
-    // Update import_id on new transactions
+    // Update import_id on new transactions in chunks of 100 with unique IDs
     if (classifiedTransactions.length > 0) {
-      await this.txRepo.update(
-        classifiedTransactions.map((t) => t.id),
-        { import_id: log.id },
+      const uniqueIds = Array.from(
+        new Set(classifiedTransactions.map((t) => t.id)),
       );
+      for (let i = 0; i < uniqueIds.length; i += 100) {
+        const idBatch = uniqueIds.slice(i, i + 100);
+        try {
+          await this.txRepo
+            .createQueryBuilder()
+            .update(Transaction)
+            .set({ import_id: log.id })
+            .whereInIds(idBatch)
+            .execute();
+        } catch {}
+      }
     }
 
     return {

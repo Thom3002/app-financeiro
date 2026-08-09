@@ -4,6 +4,9 @@ import { Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
 import { Category } from '../entities/category.entity';
 import { ClassificationRule } from '../entities/classification-rule.entity';
+import { ImportLog } from '../entities/import-log.entity';
+import { PluggyItem } from '../entities/pluggy-item.entity';
+import { Setting } from '../entities/setting.entity';
 
 export interface TransactionFilters {
   dataInicio?: string;
@@ -28,6 +31,7 @@ export interface UpdateTransactionDto {
   ignore_reason?: string;
   is_custo_fixo?: boolean;
   custo_fixo_grupo?: string;
+  is_manual?: boolean;
   createRulePattern?: string; // se informado, cria uma regra regex automática
 }
 
@@ -40,6 +44,12 @@ export class TransactionsService {
     private readonly catRepo: Repository<Category>,
     @InjectRepository(ClassificationRule)
     private readonly ruleRepo: Repository<ClassificationRule>,
+    @InjectRepository(ImportLog)
+    private readonly logRepo: Repository<ImportLog>,
+    @InjectRepository(PluggyItem)
+    private readonly itemRepo: Repository<PluggyItem>,
+    @InjectRepository(Setting)
+    private readonly settingRepo: Repository<Setting>,
   ) {}
 
   async findAll(filters: TransactionFilters) {
@@ -142,27 +152,56 @@ export class TransactionsService {
       }
       if (dto.is_custo_fixo !== undefined) tx.is_custo_fixo = dto.is_custo_fixo;
       if (dto.custo_fixo_grupo !== undefined) tx.custo_fixo_grupo = dto.custo_fixo_grupo;
-      tx.is_manual = true;
+      tx.is_manual = dto.is_manual !== undefined ? dto.is_manual : true;
 
       // Se solicitado, criar uma regra de autoclassificação baseada na descrição/título
-      if (dto.createRulePattern && tx.categoria) {
-        const newRule = this.ruleRepo.create({
-          regex: dto.createRulePattern,
-          categoria: tx.categoria,
-          subcategoria: tx.subcategoria || null,
-          banco_escopo: 'qualquer',
-          sinal_escopo: 'qualquer',
-          campo_alvo: 'ambos',
-          priority: 100,
-          enabled: true,
-          set_custo_fixo: tx.is_custo_fixo || false,
+      if (dto.createRulePattern && tx.categoria && tx.categoria.trim() !== '' && tx.categoria !== 'Não classificado') {
+        const cleanPattern = dto.createRulePattern.trim();
+        const existingRule = await this.ruleRepo.findOne({
+          where: { regex: cleanPattern },
         });
-        await this.ruleRepo.save(newRule);
-        tx.matched_rule_id = newRule.id;
+
+        if (existingRule) {
+          existingRule.categoria = tx.categoria;
+          existingRule.subcategoria = tx.subcategoria || null;
+          existingRule.set_custo_fixo = tx.is_custo_fixo || false;
+          await this.ruleRepo.save(existingRule);
+          tx.matched_rule_id = existingRule.id;
+        } else {
+          const newRule = this.ruleRepo.create({
+            regex: cleanPattern,
+            categoria: tx.categoria,
+            subcategoria: tx.subcategoria || null,
+            banco_escopo: 'qualquer',
+            sinal_escopo: 'qualquer',
+            campo_alvo: 'ambos',
+            priority: 100,
+            enabled: true,
+            set_custo_fixo: tx.is_custo_fixo || false,
+          });
+          const savedRule = await this.ruleRepo.save(newRule);
+          tx.matched_rule_id = savedRule.id;
+        }
       }
     }
 
     return this.txRepo.save(tx);
+  }
+
+  async resetApp(resetType: 'transactions' | 'full' = 'transactions') {
+    // 1. Limpar transações, histórico de importação e conexões Pluggy
+    await this.txRepo.clear();
+    await this.logRepo.clear();
+    await this.itemRepo.clear();
+
+    // 2. Se reset for 'full', apagar também regras, categorias personalizadas e configurações
+    if (resetType === 'full') {
+      await this.ruleRepo.clear();
+      await this.catRepo.clear();
+      await this.settingRepo.clear();
+    }
+
+    return { success: true, resetType };
   }
 
   async getDistinctCategories(): Promise<string[]> {

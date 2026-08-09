@@ -36,10 +36,17 @@ export default function RulesPage() {
         };
     }
 
+    const [ruleFilterCat, setRuleFilterCat] = useState('');
+    const [ruleSearch, setRuleSearch] = useState('');
+    const [ruleSortBy, setRuleSortBy] = useState('priority'); // 'priority' | 'category'
+
     useEffect(() => {
         loadRules();
         api.getCategoriesFlat().then(cats => {
-            setAllCategories(cats.filter(c => !c.parent_id));
+            const sorted = cats
+                .filter(c => !c.parent_id)
+                .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+            setAllCategories(sorted);
         }).catch(() => { });
     }, []);
 
@@ -59,11 +66,14 @@ export default function RulesPage() {
         setLoading(false);
     };
 
+    const [formError, setFormError] = useState('');
+
     const openNew = () => {
         setEditingRule(null);
         setForm(getEmptyForm());
         setTestResult(null);
         setTestText('');
+        setFormError('');
         setShowModal(true);
     };
 
@@ -82,30 +92,58 @@ export default function RulesPage() {
         });
         setTestResult(null);
         setTestText('');
+        setFormError('');
         setShowModal(true);
     };
 
     const saveRule = async () => {
+        setFormError('');
+        const cat = (form.categoria || '').trim();
+        if (!cat || cat === 'Não classificado') {
+            setFormError("Selecione uma categoria válida para a regra (diferente de 'Não classificado').");
+            return;
+        }
+        const cleanRegex = (form.regex || '').trim();
+        if (!cleanRegex) {
+            setFormError("Informe a expressão regular (regex) para a regra.");
+            return;
+        }
+
+        const duplicate = rules.find(
+            (r) => (!editingRule || r.id !== editingRule.id) && r.regex.trim().toLowerCase() === cleanRegex.toLowerCase()
+        );
+        if (duplicate) {
+            setFormError(`Já existe uma regra cadastrada com o regex '${cleanRegex}' para a categoria '${duplicate.categoria}'.`);
+            return;
+        }
+
+        const scrollY = window.scrollY;
         try {
             if (editingRule) {
-                await api.updateRule(editingRule.id, form);
+                await api.updateRule(editingRule.id, { ...form, regex: cleanRegex, categoria: cat });
             } else {
-                await api.createRule(form);
+                await api.createRule({ ...form, regex: cleanRegex, categoria: cat });
             }
             setShowModal(false);
-            loadRules();
+            setFormError('');
+            await loadRules();
+            window.dispatchEvent(new Event('unclassified-count-changed'));
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
-            alert(e.message);
+            setFormError(e.message);
         }
     };
 
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
     const deleteRule = async (id) => {
+        const scrollY = window.scrollY;
         try {
             await api.deleteRule(id);
-            loadRules();
+            await loadRules();
             setConfirmDeleteId(null);
+            window.dispatchEvent(new Event('unclassified-count-changed'));
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
             alert(e.message);
         }
@@ -127,11 +165,13 @@ export default function RulesPage() {
 
     const handleReprocess = async () => {
         if (!confirm('Aplicar regras? Isso modificará as categorias das transações.')) return;
+        const scrollY = window.scrollY;
         try {
             const result = await api.reprocessRules(simForm);
             setSimResult(result);
             alert(`Reprocessamento concluído: ${result.totalChanged} transações alteradas.`);
             window.dispatchEvent(new Event('unclassified-count-changed'));
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         } catch (e) {
             alert(e.message);
         }
@@ -172,6 +212,28 @@ export default function RulesPage() {
         input.click();
     };
 
+    const distinctCategoriesInRules = Array.from(new Set(rules.map(r => r.categoria))).filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    const filteredRules = rules
+        .filter(r => {
+            if (ruleFilterCat && r.categoria !== ruleFilterCat) return false;
+            if (ruleSearch) {
+                const searchLower = ruleSearch.toLowerCase();
+                const matchRegex = (r.regex || '').toLowerCase().includes(searchLower);
+                const matchCat = (r.categoria || '').toLowerCase().includes(searchLower);
+                const matchSub = (r.subcategoria || '').toLowerCase().includes(searchLower);
+                if (!matchRegex && !matchCat && !matchSub) return false;
+            }
+            return true;
+        })
+        .sort((a, b) => {
+            if (ruleSortBy === 'category') {
+                const catComp = (a.categoria || '').localeCompare(b.categoria || '', 'pt-BR');
+                if (catComp !== 0) return catComp;
+            }
+            return (a.priority || 0) - (b.priority || 0);
+        });
+
     return (
         <div>
             <div className="page-header flex-between">
@@ -186,6 +248,47 @@ export default function RulesPage() {
                         🔍 Simular
                     </button>
                     <button className="btn btn-primary" onClick={openNew}>+ Nova Regra</button>
+                </div>
+            </div>
+
+            {/* Rule Filter / Sort Toolbar */}
+            <div className="card mb-4" style={{ padding: '12px 16px' }}>
+                <div className="flex gap-4" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ flex: '1 1 200px' }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="🔍 Buscar por regex ou categoria..."
+                            value={ruleSearch}
+                            onChange={(e) => setRuleSearch(e.target.value)}
+                        />
+                    </div>
+                    <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="text-xs text-muted">Filtrar por Categoria:</span>
+                        <select
+                            className="form-select"
+                            style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                            value={ruleFilterCat}
+                            onChange={(e) => setRuleFilterCat(e.target.value)}
+                        >
+                            <option value="">Todas as categorias ({distinctCategoriesInRules.length})</option>
+                            {distinctCategoriesInRules.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="text-xs text-muted">Ordenar por:</span>
+                        <select
+                            className="form-select"
+                            style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                            value={ruleSortBy}
+                            onChange={(e) => setRuleSortBy(e.target.value)}
+                        >
+                            <option value="priority">Prioridade (Padrão)</option>
+                            <option value="category">Categoria (A-Z)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -299,7 +402,7 @@ export default function RulesPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {rules.map((r) => (
+                            {filteredRules.map((r) => (
                                 <tr key={r.id} style={{ opacity: r.enabled ? 1 : 0.5 }}>
                                     <td>{r.priority}</td>
                                     <td><code style={{ fontSize: '0.75rem', color: 'var(--accent-primary-hover)' }}>{r.regex}</code></td>
@@ -338,6 +441,12 @@ export default function RulesPage() {
                             <h3>{editingRule ? 'Editar Regra' : 'Nova Regra'}</h3>
                             <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
                         </div>
+
+                        {formError && (
+                            <div className="alert alert-danger" style={{ marginBottom: 16, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 14px', borderRadius: '6px', fontSize: '0.85rem' }}>
+                                ⚠️ {formError}
+                            </div>
+                        )}
                         <div className="form-group">
                             <label className="form-label">Regex</label>
                             <input type="text" className="form-input"

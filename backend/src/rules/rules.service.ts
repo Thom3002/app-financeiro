@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClassificationRule } from '../entities/classification-rule.entity';
@@ -17,7 +17,15 @@ export class RulesService {
     private readonly categoriesService: CategoriesService,
   ) {}
 
-  findAll() {
+  async findAll() {
+    // Excluir regras legadas sem categoria ou com 'Não classificado'
+    await this.ruleRepo
+      .createQueryBuilder()
+      .delete()
+      .from(ClassificationRule)
+      .where("categoria IS NULL OR TRIM(categoria) = '' OR categoria = 'Não classificado'")
+      .execute();
+
     return this.ruleRepo.find({ order: { priority: 'ASC' } });
   }
 
@@ -26,25 +34,30 @@ export class RulesService {
   }
 
   async create(data: Partial<ClassificationRule>) {
-    if (data.regex) {
-      const existingMatches = await this.ruleRepo.find({
-        where: { regex: data.regex },
-        order: { priority: 'ASC' },
-      });
-      if (existingMatches.length > 0) {
-        const [first, ...duplicates] = existingMatches;
-        Object.assign(first, data);
-        const saved = await this.ruleRepo.save(first);
-
-        for (const dup of duplicates) {
-          await this.ruleRepo.remove(dup);
-        }
-
-        await this.categoriesService.ensureExists(saved.categoria, saved.subcategoria);
-        await this.classifierService.reclassifyAll();
-        return saved;
-      }
+    const cat = data.categoria ? data.categoria.trim() : '';
+    if (!cat || cat === 'Não classificado') {
+      throw new BadRequestException(
+        "Não é permitido criar regras com a categoria 'Não classificado' ou vazia.",
+      );
     }
+    const cleanRegex = data.regex ? data.regex.trim() : '';
+    if (!cleanRegex) {
+      throw new BadRequestException('O campo regex não pode ser vazio.');
+    }
+
+    const allRules = await this.ruleRepo.find();
+    const existingSameRegex = allRules.find(
+      (r) => r.regex.trim().toLowerCase() === cleanRegex.toLowerCase(),
+    );
+
+    if (existingSameRegex) {
+      throw new ConflictException(
+        `Já existe uma regra cadastrada com o mesmo regex '${cleanRegex}' para a categoria '${existingSameRegex.categoria}'.`,
+      );
+    }
+
+    data.regex = cleanRegex;
+    data.categoria = cat;
     const rule = this.ruleRepo.create(data);
     const saved = await this.ruleRepo.save(rule);
     await this.categoriesService.ensureExists(saved.categoria, saved.subcategoria);
@@ -53,6 +66,37 @@ export class RulesService {
   }
 
   async update(id: string, data: Partial<ClassificationRule>) {
+    if (data.categoria !== undefined) {
+      const cat = data.categoria ? data.categoria.trim() : '';
+      if (!cat || cat === 'Não classificado') {
+        throw new BadRequestException(
+          "Não é permitido atualizar regras com a categoria 'Não classificado' ou vazia.",
+        );
+      }
+      data.categoria = cat;
+    }
+
+    if (data.regex !== undefined) {
+      const cleanRegex = data.regex.trim();
+      if (!cleanRegex) {
+        throw new BadRequestException('O campo regex não pode ser vazio.');
+      }
+
+      const allRules = await this.ruleRepo.find();
+      const existingSameRegex = allRules.find(
+        (r) =>
+          r.id !== id &&
+          r.regex.trim().toLowerCase() === cleanRegex.toLowerCase(),
+      );
+
+      if (existingSameRegex) {
+        throw new ConflictException(
+          `Já existe outra regra cadastrada com o mesmo regex '${cleanRegex}' para a categoria '${existingSameRegex.categoria}'.`,
+        );
+      }
+      data.regex = cleanRegex;
+    }
+
     await this.ruleRepo.update(id, data);
     const updated = await this.ruleRepo.findOneBy({ id });
     if (updated) {

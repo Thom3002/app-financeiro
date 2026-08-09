@@ -20,20 +20,35 @@ export class DashboardService {
     return ignored.map((c) => c.nome);
   }
 
-  private applyDashboardFilters(qb: any, dataInicio?: string, dataFim?: string, ignoredNames: string[] = []) {
+  private applyDashboardFilters(
+    qb: any,
+    dataInicio?: string,
+    dataFim?: string,
+    ignoredNames: string[] = [],
+    selectedCategories?: string,
+  ) {
     qb.andWhere('(tx.ignorar_dashboard IS NULL OR tx.ignorar_dashboard = false)');
     if (dataInicio) qb.andWhere('tx.data >= :dataInicio', { dataInicio });
     if (dataFim) qb.andWhere('tx.data <= :dataFim', { dataFim });
     if (ignoredNames.length > 0) {
       qb.andWhere('(tx.categoria IS NULL OR tx.categoria NOT IN (:...ignoredNames))', { ignoredNames });
     }
+    if (selectedCategories) {
+      const catList = selectedCategories
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (catList.length > 0) {
+        qb.andWhere('tx.categoria IN (:...catList)', { catList });
+      }
+    }
   }
 
-  async getSummary(dataInicio?: string, dataFim?: string) {
+  async getSummary(dataInicio?: string, dataFim?: string, categorias?: string) {
     const ignoredNames = await this.getIgnoredCategoryNames();
 
     const qb = this.txRepo.createQueryBuilder('tx');
-    this.applyDashboardFilters(qb, dataInicio, dataFim, ignoredNames);
+    this.applyDashboardFilters(qb, dataInicio, dataFim, ignoredNames, categorias);
 
     // Totals
     const totals = await qb
@@ -47,7 +62,7 @@ export class DashboardService {
 
     // By category
     const qb2 = this.txRepo.createQueryBuilder('tx');
-    this.applyDashboardFilters(qb2, dataInicio, dataFim, ignoredNames);
+    this.applyDashboardFilters(qb2, dataInicio, dataFim, ignoredNames, categorias);
 
     const byCategory = await qb2
       .select([
@@ -62,7 +77,7 @@ export class DashboardService {
 
     // Biggest transactions
     const qb3 = this.txRepo.createQueryBuilder('tx');
-    this.applyDashboardFilters(qb3, dataInicio, dataFim, ignoredNames);
+    this.applyDashboardFilters(qb3, dataInicio, dataFim, ignoredNames, categorias);
 
     const biggest = await qb3
       .orderBy('ABS(tx.valor)', 'DESC')
@@ -80,11 +95,11 @@ export class DashboardService {
     };
   }
 
-  async getTimeline(dataInicio?: string, dataFim?: string) {
+  async getTimeline(dataInicio?: string, dataFim?: string, categorias?: string) {
     const ignoredNames = await this.getIgnoredCategoryNames();
 
     const qb = this.txRepo.createQueryBuilder('tx');
-    this.applyDashboardFilters(qb, dataInicio, dataFim, ignoredNames);
+    this.applyDashboardFilters(qb, dataInicio, dataFim, ignoredNames, categorias);
 
     const results = await qb
       .select([
@@ -144,5 +159,91 @@ export class DashboardService {
       bySubcategory,
       transactions,
     };
+  }
+
+  async exportExcel(
+    dataInicio?: string,
+    dataFim?: string,
+    categorias?: string,
+  ): Promise<Buffer> {
+    const ignoredNames = await this.getIgnoredCategoryNames();
+    const qb = this.txRepo.createQueryBuilder('tx');
+    this.applyDashboardFilters(qb, dataInicio, dataFim, ignoredNames, categorias);
+    qb.orderBy('tx.data', 'DESC');
+    const transactions = await qb.getMany();
+
+    const receitas = transactions.filter((t) => t.valor > 0);
+    const despesas = transactions.filter((t) => t.valor < 0);
+
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'App Financeiro';
+    workbook.created = new Date();
+
+    const setupSheet = (sheet: any, title: string, rows: Transaction[], isIncome: boolean) => {
+      sheet.views = [{ state: 'frozen', ySplit: 1 }];
+      sheet.columns = [
+        { header: 'Data', key: 'data', width: 14 },
+        { header: 'Título', key: 'titulo', width: 30 },
+        { header: 'Descrição', key: 'descricao', width: 40 },
+        { header: 'Categoria', key: 'categoria', width: 22 },
+        { header: 'Subcategoria', key: 'subcategoria', width: 22 },
+        { header: 'Banco', key: 'banco', width: 16 },
+        { header: 'Valor (R$)', key: 'valor', width: 18 },
+      ];
+
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFF' }, size: 11 };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: isIncome ? '15803D' : 'B91C1C' },
+      };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+      let total = 0;
+      rows.forEach((tx) => {
+        total += tx.valor;
+        const row = sheet.addRow({
+          data: tx.data,
+          titulo: tx.titulo || '',
+          descricao: tx.descricao || '',
+          categoria: tx.categoria || 'Não classificado',
+          subcategoria: tx.subcategoria || '',
+          banco: tx.banco || '',
+          valor: tx.valor,
+        });
+
+        const cellValor = row.getCell('valor');
+        cellValor.numFmt = 'R$ #,##0.00;[Red]-R$ #,##0.00;R$ 0.00';
+      });
+
+      const summaryRow = sheet.addRow({
+        data: 'TOTAL',
+        titulo: `${rows.length} lançamento(s)`,
+        descricao: '',
+        categoria: '',
+        subcategoria: '',
+        banco: '',
+        valor: total,
+      });
+      summaryRow.font = { bold: true, size: 11 };
+      const totalCell = summaryRow.getCell('valor');
+      totalCell.numFmt = 'R$ #,##0.00;[Red]-R$ #,##0.00;R$ 0.00';
+      summaryRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'E2E8F0' },
+      };
+    };
+
+    const sheetReceitas = workbook.addWorksheet('Receitas');
+    setupSheet(sheetReceitas, 'Receitas', receitas, true);
+
+    const sheetDespesas = workbook.addWorksheet('Despesas');
+    setupSheet(sheetDespesas, 'Despesas', despesas, false);
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 }
