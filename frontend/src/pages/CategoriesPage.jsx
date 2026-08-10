@@ -60,6 +60,7 @@ export default function CategoriesPage() {
             else await api.createCategory(d);
             setShowModal(false);
             loadData();
+            window.dispatchEvent(new Event('unclassified-count-changed'));
         } catch (e) { alert(e.message); }
     };
 
@@ -68,6 +69,7 @@ export default function CategoriesPage() {
             await api.deleteCategory(id);
             setConfirmDeleteId(null);
             loadData();
+            window.dispatchEvent(new Event('unclassified-count-changed'));
         } catch (e) { alert(e.message); }
     };
 

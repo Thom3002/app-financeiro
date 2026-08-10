@@ -16,7 +16,38 @@ export class CategoriesService {
     private readonly ruleRepo: Repository<ClassificationRule>,
   ) {}
 
+  /**
+   * Sincroniza qualquer categoria ou subcategoria presente em transações ou regras
+   * para a tabela de categorias caso ainda não esteja cadastrada.
+   */
+  async syncOrphanCategories(): Promise<void> {
+    try {
+      const txCats = await this.txRepo
+        .createQueryBuilder('tx')
+        .select('DISTINCT tx.categoria AS categoria, tx.subcategoria AS subcategoria')
+        .where("tx.categoria IS NOT NULL AND TRIM(tx.categoria) != '' AND tx.categoria != 'Não classificado'")
+        .getRawMany();
+
+      const ruleCats = await this.ruleRepo
+        .createQueryBuilder('rule')
+        .select('DISTINCT rule.categoria AS categoria, rule.subcategoria AS subcategoria')
+        .where("rule.categoria IS NOT NULL AND TRIM(rule.categoria) != '' AND rule.categoria != 'Não classificado'")
+        .getRawMany();
+
+      const allPairs = [...txCats, ...ruleCats];
+
+      for (const pair of allPairs) {
+        if (pair.categoria && pair.categoria.trim()) {
+          await this.ensureExists(pair.categoria.trim(), pair.subcategoria ? pair.subcategoria.trim() : null);
+        }
+      }
+    } catch (e) {
+      // Ignora pequenos erros de sincronização concorrente
+    }
+  }
+
   async findAll() {
+    await this.syncOrphanCategories();
     const categories = await this.catRepo.find({
       where: { parent_id: IsNull() },
       relations: ['children'],
@@ -26,6 +57,7 @@ export class CategoriesService {
   }
 
   async findAllFlat() {
+    await this.syncOrphanCategories();
     return this.catRepo.find({
       relations: ['children'],
       order: { nome: 'ASC' },
@@ -45,8 +77,43 @@ export class CategoriesService {
   }
 
   async update(id: string, data: Partial<Category>) {
+    const oldCat = await this.catRepo.findOneBy({ id });
     await this.catRepo.update(id, data);
-    return this.catRepo.findOneBy({ id });
+    const updated = await this.catRepo.findOneBy({ id });
+
+    // Se o nome da categoria/subcategoria mudou, atualiza em cascata todas as transações e regras
+    if (oldCat && updated && oldCat.nome !== updated.nome) {
+      if (oldCat.parent_id) {
+        await this.txRepo
+          .createQueryBuilder()
+          .update(Transaction)
+          .set({ subcategoria: updated.nome })
+          .where('subcategoria = :oldName', { oldName: oldCat.nome })
+          .execute();
+
+        await this.ruleRepo
+          .createQueryBuilder()
+          .update(ClassificationRule)
+          .set({ subcategoria: updated.nome })
+          .where('subcategoria = :oldName', { oldName: oldCat.nome })
+          .execute();
+      } else {
+        await this.txRepo
+          .createQueryBuilder()
+          .update(Transaction)
+          .set({ categoria: updated.nome })
+          .where('categoria = :oldName', { oldName: oldCat.nome })
+          .execute();
+
+        await this.ruleRepo
+          .createQueryBuilder()
+          .update(ClassificationRule)
+          .set({ categoria: updated.nome })
+          .where('categoria = :oldName', { oldName: oldCat.nome })
+          .execute();
+      }
+    }
+    return updated;
   }
 
   async remove(id: string) {

@@ -7,6 +7,7 @@ import { ClassificationRule } from '../entities/classification-rule.entity';
 import { ImportLog } from '../entities/import-log.entity';
 import { PluggyItem } from '../entities/pluggy-item.entity';
 import { Setting } from '../entities/setting.entity';
+import { CategoriesService } from '../categories/categories.service';
 
 export interface TransactionFilters {
   dataInicio?: string;
@@ -50,6 +51,7 @@ export class TransactionsService {
     private readonly itemRepo: Repository<PluggyItem>,
     @InjectRepository(Setting)
     private readonly settingRepo: Repository<Setting>,
+    private readonly categoriesService: CategoriesService,
   ) {}
 
   async findAll(filters: TransactionFilters) {
@@ -68,9 +70,17 @@ export class TransactionsService {
       qb.andWhere('tx.data <= :dataFim', { dataFim: filters.dataFim });
     }
     if (filters.categoria) {
-      qb.andWhere('tx.categoria = :categoria', {
-        categoria: filters.categoria,
-      });
+      const catList = Array.isArray(filters.categoria)
+        ? filters.categoria
+        : typeof filters.categoria === 'string'
+        ? (filters.categoria as string).split(',').map((c) => c.trim()).filter(Boolean)
+        : [filters.categoria];
+
+      if (catList.length === 1) {
+        qb.andWhere('(tx.categoria = :cat OR tx.subcategoria = :cat)', { cat: catList[0] });
+      } else if (catList.length > 1) {
+        qb.andWhere('(tx.categoria IN (:...cats) OR tx.subcategoria IN (:...cats))', { cats: catList });
+      }
     }
     if (filters.subcategoria) {
       qb.andWhere('tx.subcategoria = :subcategoria', {
@@ -186,10 +196,12 @@ export class TransactionsService {
             enabled: true,
             set_custo_fixo: tx.is_custo_fixo || false,
           });
-          const savedRule = await this.ruleRepo.save(newRule);
-          tx.matched_rule_id = savedRule.id;
         }
       }
+    }
+
+    if (tx.categoria && tx.categoria !== 'Não classificado') {
+      await this.categoriesService.ensureExists(tx.categoria, tx.subcategoria);
     }
 
     return this.txRepo.save(tx);

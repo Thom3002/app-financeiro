@@ -9,6 +9,8 @@ import { ImportLog } from '../entities/import-log.entity';
 import { PluggyItem } from '../entities/pluggy-item.entity';
 import { Setting } from '../entities/setting.entity';
 
+import { CategoriesModule } from '../categories/categories.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -19,6 +21,7 @@ import { Setting } from '../entities/setting.entity';
       PluggyItem,
       Setting,
     ]),
+    CategoriesModule,
   ],
   controllers: [TransactionsController],
   providers: [TransactionsService],
