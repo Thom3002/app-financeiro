@@ -97,6 +97,7 @@ export default function ClassifyPage() {
 
         const handleUnclassifiedChanged = () => {
             loadSuggestions();
+            loadCategories();
         };
 
         window.addEventListener('unclassified-count-changed', handleUnclassifiedChanged);

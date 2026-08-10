@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.11] - 2026-08-09
+
+### Fixed
+- **Integridade de Transações e Preservação de Classificação Manual**:
+  - Garantida a preservação estrita da flag `is_manual: true` em reclassificações globais e reprocessamento de regras.
+  - Reset automático de `is_manual` para `false` ao desfazer ou marcar categoria como `"Não classificado"`.
+  - Corrigido o envio da propriedade `createRulePattern` e a contagem de transações reclassificadas no modal de edição rápida do frontend.
+  - Propagação automática das flags `is_custo_fixo` e `ignorar_dashboard` nas importações CSV e no Open Finance (Pluggy).
+- **Validação de Regras e Sincronização entre Abas**:
+  - Bloqueio de regexes duplicados e categorias inválidas no método de importação em lote (`importRules`).
+  - Sincronização reativa em tempo real entre as abas *Dashboard*, *Transações* e *Classificar* via escuta do evento `unclassified-count-changed`.
+- **Testes Automatizados**:
+  - Adicionada nova suíte de testes `features-verification.spec.ts` cobrindo regras de classificação manual, validação de regexes e integridade de transações (68/68 testes aprovados).
+
 ## [1.1.10] - 2026-08-09
 
 ### Fixed

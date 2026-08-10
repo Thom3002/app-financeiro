@@ -326,8 +326,11 @@ export class PluggyService implements OnModuleInit {
                 rules,
               );
 
-              // Se a categoria atribuída for uma categoria que ignora dashboard por padrão
-              if (!ignorarDash && ignoredCatNames.includes(classification.categoria.toLowerCase())) {
+              // Se a regra de classificação ou a categoria atribuída ignorar o dashboard por padrão
+              if (!ignorarDash && classification.ignorar_dashboard) {
+                ignorarDash = true;
+                ignoreReason = `Regra de classificação (${classification.categoria})`;
+              } else if (!ignorarDash && ignoredCatNames.includes(classification.categoria.toLowerCase())) {
                 ignorarDash = true;
                 ignoreReason = `Categoria ${classification.categoria} desconsiderada do Dashboard`;
               }

@@ -135,7 +135,7 @@ export class TransactionsService {
     if (typeof dto === 'string') {
       tx.categoria = dto;
       tx.subcategoria = subcategoriaParam || null;
-      tx.is_manual = true;
+      tx.is_manual = !!(dto && dto !== 'Não classificado');
       tx.matched_rule_id = null;
     } else {
       if (dto.categoria !== undefined) tx.categoria = dto.categoria;
@@ -152,11 +152,18 @@ export class TransactionsService {
       }
       if (dto.is_custo_fixo !== undefined) tx.is_custo_fixo = dto.is_custo_fixo;
       if (dto.custo_fixo_grupo !== undefined) tx.custo_fixo_grupo = dto.custo_fixo_grupo;
-      tx.is_manual = dto.is_manual !== undefined ? dto.is_manual : true;
+
+      if (!tx.categoria || tx.categoria === 'Não classificado') {
+        tx.is_manual = false;
+        tx.matched_rule_id = null;
+      } else {
+        tx.is_manual = dto.is_manual !== undefined ? dto.is_manual : true;
+      }
 
       // Se solicitado, criar uma regra de autoclassificação baseada na descrição/título
-      if (dto.createRulePattern && tx.categoria && tx.categoria.trim() !== '' && tx.categoria !== 'Não classificado') {
-        const cleanPattern = dto.createRulePattern.trim();
+      const patternToUse = dto.createRulePattern || (dto as any).rulePattern || (dto as any).createRulePattern;
+      if (patternToUse && tx.categoria && tx.categoria.trim() !== '' && tx.categoria !== 'Não classificado') {
+        const cleanPattern = patternToUse.trim();
         const existingRule = await this.ruleRepo.findOne({
           where: { regex: cleanPattern },
         });

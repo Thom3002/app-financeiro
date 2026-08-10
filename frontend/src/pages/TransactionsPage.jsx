@@ -83,7 +83,17 @@ export default function TransactionsPage() {
         api.getCategoriesFlat().then(cats => {
             setAllCategories(cats.filter(c => !c.parent_id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
         }).catch(() => { });
-    }, []);
+
+        const handleUnclassifiedChanged = () => {
+            loadData();
+            refreshCategories();
+        };
+
+        window.addEventListener('unclassified-count-changed', handleUnclassifiedChanged);
+        return () => {
+            window.removeEventListener('unclassified-count-changed', handleUnclassifiedChanged);
+        };
+    }, [loadData]);
 
     const refreshCategories = () => {
         api.getDistinctCategories().then(cats => setCategories(cats.sort((a, b) => a.localeCompare(b, 'pt-BR')))).catch(() => { });
@@ -119,8 +129,8 @@ export default function TransactionsPage() {
         setEditValues({
             categoria: tx.categoria || '',
             subcategoria: tx.subcategoria || '',
-            ignorar_dashboard: !!tx.ignorar_dashboard,
-            is_custo_fixo: !!tx.is_custo_fixo,
+            ignorar_dashboard: tx.ignorar_dashboard || false,
+            is_custo_fixo: tx.is_custo_fixo || false,
             createRulePattern: extractKeywordFromTx(tx),
             saveRule: false,
         });
@@ -136,6 +146,7 @@ export default function TransactionsPage() {
                 ignorar_dashboard: editValues.ignorar_dashboard,
                 is_custo_fixo: editValues.is_custo_fixo,
                 createRule: editValues.saveRule,
+                createRulePattern: editValues.saveRule ? editValues.createRulePattern : undefined,
                 rulePattern: editValues.saveRule ? editValues.createRulePattern : undefined,
                 is_manual: true,
             });
@@ -207,7 +218,8 @@ export default function TransactionsPage() {
                 targetTxId: ruleTarget?.id,
             });
             setRuleTarget(null);
-            setSuccessMsg(`Regra salva! ${result.totalChanged} transação(ões) classificada(s).`);
+            const countClassified = result.transactionsClassified !== undefined ? result.transactionsClassified : (result.totalChanged || 0);
+            setSuccessMsg(`Regra salva! ${countClassified} transação(ões) classificada(s).`);
             await loadData();
             refreshCategories();
             window.dispatchEvent(new Event('unclassified-count-changed'));

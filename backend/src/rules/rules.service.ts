@@ -198,32 +198,65 @@ export class RulesService {
     const errors: string[] = [];
     let imported = 0;
 
+    const existingRules = await this.ruleRepo.find();
+    const existingRegexMap = new Map<string, ClassificationRule>();
+    existingRules.forEach((r) => {
+      if (r.regex) existingRegexMap.set(r.regex.trim().toLowerCase(), r);
+    });
+
     for (const ruleData of rules) {
       try {
-        if (!ruleData.regex || !ruleData.categoria) {
+        const cleanRegex = ruleData.regex ? ruleData.regex.trim() : '';
+        const cat = ruleData.categoria ? ruleData.categoria.trim() : '';
+
+        if (!cleanRegex || !cat || cat === 'Não classificado') {
           errors.push(
-            `Regra inválida: regex e categoria são obrigatórios.`,
+            `Regra inválida ou com categoria 'Não classificado'/vazia: '${cleanRegex || 'sem regex'}'.`,
           );
           continue;
         }
-        // Test regex validity
-        new RegExp(ruleData.regex);
 
-        const rule = this.ruleRepo.create({
-          regex: ruleData.regex,
-          campo_alvo: ruleData.campo_alvo || 'ambos',
-          banco_escopo: ruleData.banco_escopo || 'qualquer',
-          sinal_escopo: ruleData.sinal_escopo || 'qualquer',
-          categoria: ruleData.categoria,
-          subcategoria: ruleData.subcategoria || null,
-          priority: ruleData.priority || 100,
-          enabled: ruleData.enabled !== false,
-          overwrite_manual: ruleData.overwrite_manual || false,
-        });
-        await this.ruleRepo.save(rule);
+        // Test regex validity
+        new RegExp(cleanRegex);
+
+        const lowerRegex = cleanRegex.toLowerCase();
+        let ruleToSave: ClassificationRule;
+
+        if (existingRegexMap.has(lowerRegex)) {
+          // Atualiza regra existente em vez de duplicar
+          ruleToSave = existingRegexMap.get(lowerRegex)!;
+          ruleToSave.categoria = cat;
+          ruleToSave.subcategoria = ruleData.subcategoria || null;
+          ruleToSave.campo_alvo = ruleData.campo_alvo || ruleToSave.campo_alvo || 'ambos';
+          ruleToSave.banco_escopo = ruleData.banco_escopo || ruleToSave.banco_escopo || 'qualquer';
+          ruleToSave.sinal_escopo = ruleData.sinal_escopo || ruleToSave.sinal_escopo || 'qualquer';
+          ruleToSave.priority = ruleData.priority || ruleToSave.priority || 100;
+          ruleToSave.enabled = ruleData.enabled !== false;
+          ruleToSave.overwrite_manual = ruleData.overwrite_manual || false;
+          ruleToSave.set_custo_fixo = ruleData.set_custo_fixo || false;
+          ruleToSave.ignorar_dashboard = ruleData.ignorar_dashboard || false;
+        } else {
+          ruleToSave = this.ruleRepo.create({
+            regex: cleanRegex,
+            campo_alvo: ruleData.campo_alvo || 'ambos',
+            banco_escopo: ruleData.banco_escopo || 'qualquer',
+            sinal_escopo: ruleData.sinal_escopo || 'qualquer',
+            categoria: cat,
+            subcategoria: ruleData.subcategoria || null,
+            priority: ruleData.priority || 100,
+            enabled: ruleData.enabled !== false,
+            overwrite_manual: ruleData.overwrite_manual || false,
+            set_custo_fixo: ruleData.set_custo_fixo || false,
+            ignorar_dashboard: ruleData.ignorar_dashboard || false,
+          });
+        }
+
+        const saved = await this.ruleRepo.save(ruleToSave);
+        existingRegexMap.set(lowerRegex, saved);
+        await this.categoriesService.ensureExists(saved.categoria, saved.subcategoria);
         imported++;
       } catch (e) {
-        errors.push(`Erro: ${(e as Error).message}`);
+        errors.push(`Erro ao importar regra: ${(e as Error).message}`);
       }
     }
 

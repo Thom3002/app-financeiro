@@ -172,10 +172,21 @@ export default function DashboardPage() {
     });
 
     useEffect(() => {
-        api.getCategoriesFlat().then(cats => {
-            setAllCategories(cats.filter(c => !c.parent_id));
-        }).catch(() => { });
-    }, []);
+        const refreshAll = () => {
+            loadDashboardData();
+            loadTransactions();
+            api.getCategoriesFlat().then(cats => {
+                setAllCategories(cats.filter(c => !c.parent_id));
+            }).catch(() => { });
+        };
+
+        refreshAll();
+
+        window.addEventListener('unclassified-count-changed', refreshAll);
+        return () => {
+            window.removeEventListener('unclassified-count-changed', refreshAll);
+        };
+    }, [loadDashboardData, loadTransactions]);
 
     const getSubcategoryOptions = (catName) => {
         const cat = allCategories.find(c => c.nome === catName);

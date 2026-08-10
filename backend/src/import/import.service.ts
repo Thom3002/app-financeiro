@@ -68,6 +68,11 @@ export class ImportService {
       tx.subcategoria = classification.subcategoria;
       tx.matched_rule_id = classification.matched_rule_id;
       tx.is_manual = false;
+      tx.is_custo_fixo = classification.set_custo_fixo || false;
+      tx.ignorar_dashboard = classification.ignorar_dashboard || false;
+      if (classification.ignorar_dashboard) {
+        tx.ignore_reason = `Regra de classificação (${classification.categoria})`;
+      }
       return tx;
     });
 

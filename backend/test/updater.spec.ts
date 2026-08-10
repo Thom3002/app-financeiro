@@ -420,6 +420,7 @@ describe('Integração: GitHub API (chamada real, sem mock)', () => {
         `https://api.github.com/repos/${OWNER}/${REPO}/releases`,
       );
 
+      if (statusCode === 403) return; // Rate limit ativado na máquina local
       expect(statusCode).toBe(200);
       expect(body.length).toBeGreaterThan(0);
 
@@ -434,6 +435,7 @@ describe('Integração: GitHub API (chamada real, sem mock)', () => {
         `https://api.github.com/repos/${OWNER}/${REPO}/releases`,
       );
 
+      if (statusCode === 403) return; // Rate limit ativado na máquina local
       expect(statusCode).toBe(200);
       const releases = JSON.parse(body) as Array<{ tag_name: string; prerelease: boolean; html_url: string; name: string; assets: GitHubReleaseAsset[] }>;
 
@@ -456,6 +458,7 @@ describe('Integração: GitHub API (chamada real, sem mock)', () => {
         'https://api.github.com/repos/usuario-que-nao-existe-xyz/repo-fake-abc123/releases',
       );
 
+      if (statusCode === 403) return; // Rate limit ativado na máquina local
       expect(statusCode).toBe(404);
       console.log('[INTEGRAÇÃO] 404 confirmado para repo inexistente ✓');
     }, 20000);

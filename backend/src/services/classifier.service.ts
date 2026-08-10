@@ -42,8 +42,9 @@ export class ClassifierService {
   ): ClassificationResult {
     for (const rule of rules) {
       if (
+        rule.banco_escopo &&
         rule.banco_escopo !== 'qualquer' &&
-        rule.banco_escopo.toUpperCase() !== tx.banco.toUpperCase()
+        rule.banco_escopo.toUpperCase() !== (tx.banco || '').toUpperCase()
       ) {
         continue;
       }
