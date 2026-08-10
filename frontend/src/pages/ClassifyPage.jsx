@@ -2,6 +2,24 @@ import { useState, useEffect } from 'react';
 import { api } from '../api';
 import ConflictPanel from '../components/ConflictPanel';
 import { useVisibility } from '../contexts/VisibilityContext';
+import {
+    Tag,
+    Calendar,
+    KeyRound,
+    BarChart3,
+    RefreshCw,
+    Eye,
+    Check,
+    Pencil,
+    Trash2,
+    Building2,
+    CreditCard,
+    X,
+    Pin,
+    EyeOff,
+    Sparkles,
+    AlertCircle
+} from 'lucide-react';
 
 export default function ClassifyPage() {
     const { isVisible } = useVisibility();
@@ -29,6 +47,8 @@ export default function ClassifyPage() {
     const [editingSuggestion, setEditingSuggestion] = useState(null);
     const [sugCategoria, setSugCategoria] = useState('');
     const [sugSubcategoria, setSugSubcategoria] = useState('');
+    const [sugIsCustoFixo, setSugIsCustoFixo] = useState(false);
+    const [sugIgnorarDashboard, setSugIgnorarDashboard] = useState(false);
 
     // Conflict & Detail modals
     const [conflicts, setConflicts] = useState(null);
@@ -77,14 +97,24 @@ export default function ClassifyPage() {
         return { dataInicio: '', dataFim: '' };
     };
 
-    const loadSuggestions = async (preset = periodPreset) => {
+    // Ignored suggestions & custom edited keywords
+    const [ignoredKeywords, setIgnoredKeywords] = useState([]);
+    const [customKeywords, setCustomKeywords] = useState({});
+    const [customPreviews, setCustomPreviews] = useState({});
+    const [editingKeywordKey, setEditingKeywordKey] = useState(null);
+
+    const loadSuggestions = async (preset = periodPreset, resetIgnored = false) => {
         setLoading(true);
         try {
             const dates = getPeriodDates(preset);
             const data = await api.getClassificationSuggestions(dates);
             setSuggestions(data.suggestions || []);
             setTotalUnclassified(data.totalUnclassified || 0);
-            window.dispatchEvent(new Event('unclassified-count-changed'));
+            if (resetIgnored) {
+                setIgnoredKeywords([]);
+                setCustomKeywords({});
+                setCustomPreviews({});
+            }
         } catch (e) {
             console.error(e);
         }
@@ -134,7 +164,7 @@ export default function ClassifyPage() {
                 setConflicts(result.conflicts);
             }
             setSuccessMsg(
-                `✅ Regra criada! ${result.transactionsClassified} transações reclassificadas.`
+                `Regra criada! ${result.transactionsClassified} transações reclassificadas.`
             );
             setKwKeywords('');
             setKwCategoria('');
@@ -152,29 +182,23 @@ export default function ClassifyPage() {
         setKwSaving(false);
     };
 
-    // Ignored suggestions & custom edited keywords
-    const [ignoredKeywords, setIgnoredKeywords] = useState([]);
-    const [customKeywords, setCustomKeywords] = useState({});
-    const [customPreviews, setCustomPreviews] = useState({});
-    const [editingKeywordIdx, setEditingKeywordIdx] = useState(null);
-
     const handleIgnoreSuggestion = (keyword) => {
         setIgnoredKeywords(prev => [...prev, keyword]);
     };
 
-    const handleKeywordChange = async (idx, newKeyword) => {
-        setCustomKeywords(prev => ({ ...prev, [idx]: newKeyword }));
+    const handleKeywordChange = async (keywordKey, newKeyword) => {
+        setCustomKeywords(prev => ({ ...prev, [keywordKey]: newKeyword }));
         if (!newKeyword.trim()) return;
         try {
             const preview = await api.previewKeyword({ keywords: newKeyword });
-            setCustomPreviews(prev => ({ ...prev, [idx]: preview }));
+            setCustomPreviews(prev => ({ ...prev, [keywordKey]: preview }));
         } catch (e) {
             console.error(e);
         }
     };
 
-    const handleApplySuggestion = async (suggestion, idx) => {
-        const keywordToApply = (customKeywords[idx] !== undefined ? customKeywords[idx] : suggestion.keyword).trim();
+    const handleApplySuggestion = async (suggestion) => {
+        const keywordToApply = (customKeywords[suggestion.keyword] !== undefined ? customKeywords[suggestion.keyword] : suggestion.keyword).trim();
         if (!sugCategoria.trim() || !keywordToApply) return;
         const scrollY = window.scrollY;
         try {
@@ -182,17 +206,21 @@ export default function ClassifyPage() {
                 keywords: keywordToApply,
                 categoria: sugCategoria,
                 subcategoria: sugSubcategoria || undefined,
+                set_custo_fixo: sugIsCustoFixo,
+                ignorar_dashboard: sugIgnorarDashboard,
             });
             if (result.conflicts && result.conflicts.length > 0) {
                 setConflicts(result.conflicts);
             }
             setSuccessMsg(
-                `✅ "${keywordToApply}" → ${sugCategoria}. ${result.transactionsClassified} transações reclassificadas.`
+                `"${keywordToApply}" → ${sugCategoria}. ${result.transactionsClassified} transações reclassificadas.`
             );
             setEditingSuggestion(null);
-            setEditingKeywordIdx(null);
+            setEditingKeywordKey(null);
             setSugCategoria('');
             setSugSubcategoria('');
+            setSugIsCustoFixo(false);
+            setSugIgnorarDashboard(false);
             await loadSuggestions();
             loadCategories();
             setTimeout(() => setSuccessMsg(''), 4000);
@@ -221,13 +249,17 @@ export default function ClassifyPage() {
         <div className="page-content">
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
-                    <h2 className="page-title">🏷️ Classificar Transações</h2>
+                    <h2 className="page-title icon-align" style={{ gap: '8px' }}>
+                        <Tag size={24} color="var(--accent-primary)" /> Classificar Transações
+                    </h2>
                     <p className="page-subtitle">
                         {totalUnclassified} transação(ões) pendente(s) de classificação no período selecionado
                     </p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>📅 Período:</label>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={15} /> Período:
+                    </label>
                     <select
                         className="form-select"
                         value={periodPreset}
@@ -264,7 +296,9 @@ export default function ClassifyPage() {
             {/* Keyword Section */}
             <div className="card" style={{ marginBottom: 24 }}>
                 <div className="card-header">
-                    <h3 className="card-title">🔑 Classificar por palavras-chave</h3>
+                    <h3 className="card-title icon-align" style={{ gap: '8px' }}>
+                        <KeyRound size={20} color="var(--accent-primary)" /> Classificar por palavras-chave
+                    </h3>
                     <p className="text-muted text-sm">
                         Digite palavras separadas por vírgula. Ex: "uber, 99 pop, taxi"
                     </p>
@@ -302,37 +336,44 @@ export default function ClassifyPage() {
                         </div>
                     </div>
 
-                    <div className="keyword-actions" style={{ flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-                        <button
-                            type="button"
-                            className={`btn btn-sm ${kwIsCustoFixo ? 'btn-primary' : 'btn-secondary'}`}
-                            onClick={() => setKwIsCustoFixo(!kwIsCustoFixo)}
-                            style={{ borderRadius: 20 }}
-                        >
-                            📌 {kwIsCustoFixo ? 'Custo Fixo (Ativo)' : 'Marcar como Custo Fixo'}
-                        </button>
-                        <button
-                            type="button"
-                            className={`btn btn-sm ${kwIgnorarDashboard ? 'btn-warning' : 'btn-secondary'}`}
-                            onClick={() => setKwIgnorarDashboard(!kwIgnorarDashboard)}
-                            style={{ borderRadius: 20 }}
-                        >
-                            {kwIgnorarDashboard ? '🙈 Ignorando do Dashboard' : '👁️ Exibir no Dashboard'}
-                        </button>
+                    <div className="keyword-actions" style={{ flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+                        <label className="modal-checkbox-row" style={{ cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={kwIsCustoFixo}
+                                onChange={(e) => setKwIsCustoFixo(e.target.checked)}
+                            />
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <Pin size={14} color="var(--accent-primary)" /> Custo Fixo / Recorrente
+                            </span>
+                        </label>
+
+                        <label className="modal-checkbox-row" style={{ cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={kwIgnorarDashboard}
+                                onChange={(e) => setKwIgnorarDashboard(e.target.checked)}
+                            />
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <EyeOff size={14} color="var(--warning)" /> Ignorar no Dashboard
+                            </span>
+                        </label>
+
                         <button
                             className="btn btn-secondary"
                             onClick={handlePreviewKeyword}
                             disabled={!kwKeywords.trim() || kwLoading}
-                            style={{ marginLeft: 'auto' }}
+                            style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                         >
-                            {kwLoading ? '...' : '👁 Pré-visualizar'}
+                            <Eye size={15} /> {kwLoading ? '...' : 'Pré-visualizar'}
                         </button>
                         <button
                             className="btn btn-lg btn-primary"
                             disabled={!kwKeywords.trim() || !kwCategoria.trim() || kwSaving}
                             onClick={handleApplyKeyword}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                         >
-                            {kwSaving ? '⏳ Salvando...' : '✅ Salvar regra e classificar'}
+                            <Check size={18} /> {kwSaving ? 'Salvando...' : 'Salvar regra e classificar'}
                         </button>
                     </div>
 
@@ -364,8 +405,8 @@ export default function ClassifyPage() {
             <div className="card">
                 <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
-                        <h3 className="card-title">
-                            📊 Sugestões por frequência
+                        <h3 className="card-title icon-align" style={{ gap: '8px' }}>
+                            <BarChart3 size={20} color="var(--accent-primary)" /> Sugestões por frequência
                             {totalUnclassified > 0 && (
                                 <span className="badge badge-warning" style={{ marginLeft: 8 }}>
                                     {totalUnclassified} não classificadas
@@ -378,15 +419,12 @@ export default function ClassifyPage() {
                     </div>
                     <button
                         className="btn btn-secondary btn-sm"
-                        onClick={() => loadSuggestions()}
+                        onClick={() => loadSuggestions(periodPreset, true)}
                         disabled={loading}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                        <svg className={loading ? 'spin' : ''} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M23 4v6h-6M1 20v-6h6"></path>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                        </svg>
-                        {loading ? 'Atualizando...' : '🔄 Atualizar Sugestões'}
+                        <RefreshCw size={14} className={loading ? 'spin' : ''} />
+                        {loading ? 'Atualizando...' : 'Atualizar Sugestões'}
                     </button>
                 </div>
 
@@ -394,44 +432,46 @@ export default function ClassifyPage() {
                     <div className="loading">Analisando transações...</div>
                 ) : suggestions.length === 0 ? (
                     <div className="empty-state">
-                        <div className="empty-icon">🎉</div>
+                        <div className="empty-icon"><Sparkles size={40} color="var(--accent-primary)" /></div>
                         <h3>Tudo classificado!</h3>
                         <p>Não há padrões pendentes de classificação.</p>
                     </div>
                 ) : (
                     <div className="suggestions-list">
-                        {suggestions.filter(s => !ignoredKeywords.includes(s.keyword)).map((s, idx) => {
-                            const currentKw = customKeywords[idx] !== undefined ? customKeywords[idx] : s.keyword;
-                            const hasCustomKw = customKeywords[idx] !== undefined && customKeywords[idx] !== s.keyword;
-                            const activePreview = customPreviews[idx];
+                        {suggestions.filter(s => !ignoredKeywords.includes(s.keyword)).map((s) => {
+                            const currentKw = customKeywords[s.keyword] !== undefined ? customKeywords[s.keyword] : s.keyword;
+                            const hasCustomKw = customKeywords[s.keyword] !== undefined && customKeywords[s.keyword] !== s.keyword;
+                            const activePreview = customPreviews[s.keyword];
                             const displayCount = activePreview ? activePreview.matchCount : s.count;
+                            const isEditingThisKw = editingKeywordKey === s.keyword;
+                            const isClassifyingThisSug = editingSuggestion === s.keyword;
 
                             return (
-                                <div key={idx} className="suggestion-card">
+                                <div key={s.keyword} className="suggestion-card">
                                     <div className="suggestion-header">
                                         <div className="suggestion-info" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                            {editingKeywordIdx === idx ? (
+                                            {isEditingThisKw ? (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <input
                                                         className="form-input"
                                                         style={{ width: '180px', padding: '4px 8px', fontSize: '0.9rem' }}
                                                         value={currentKw}
-                                                        onChange={(e) => handleKeywordChange(idx, e.target.value)}
+                                                        onChange={(e) => handleKeywordChange(s.keyword, e.target.value)}
                                                         placeholder="Palavra-chave"
                                                         autoFocus
                                                     />
-                                                    <button className="btn btn-sm btn-secondary" onClick={() => setEditingKeywordIdx(null)}>
-                                                        ✓ OK
+                                                    <button className="btn btn-sm btn-secondary" onClick={() => setEditingKeywordKey(null)}>
+                                                        <Check size={14} /> OK
                                                     </button>
                                                 </div>
                                             ) : (
                                                 <span
                                                     className="suggestion-keyword"
-                                                    style={{ cursor: 'pointer', borderBottom: '1px dashed var(--accent)', paddingBottom: '2px' }}
+                                                    style={{ cursor: 'pointer', borderBottom: '1px dashed var(--accent)', paddingBottom: '2px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                                     title="Clique para editar este padrão"
-                                                    onClick={() => setEditingKeywordIdx(idx)}
+                                                    onClick={() => setEditingKeywordKey(s.keyword)}
                                                 >
-                                                    "{currentKw}" ✏️
+                                                    "{currentKw}" <Pencil size={12} color="var(--accent-primary)" />
                                                 </span>
                                             )}
 
@@ -448,33 +488,35 @@ export default function ClassifyPage() {
                                             </span>
                                         </div>
 
-                                        {editingSuggestion !== idx ? (
+                                        {!isClassifyingThisSug ? (
                                             <div style={{ display: 'flex', gap: '8px' }}>
                                                 {s.count > 3 && (
                                                     <button
                                                         className="btn btn-sm btn-secondary"
                                                         onClick={() => setSelectedGroupModal(s)}
+                                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                     >
-                                                        👁️ Ver todas ({s.count})
+                                                        <Eye size={14} /> Ver todas ({s.count})
                                                     </button>
                                                 )}
                                                 <button
                                                     className="btn btn-sm btn-primary"
                                                     onClick={() => {
-                                                        setEditingSuggestion(idx);
+                                                        setEditingSuggestion(s.keyword);
                                                         setSugCategoria('');
                                                         setSugSubcategoria('');
                                                     }}
+                                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                 >
-                                                    Classificar
+                                                    <Tag size={14} /> Classificar
                                                 </button>
                                                 <button
                                                     className="btn btn-sm btn-secondary"
                                                     title="Ignorar esta sugestão"
                                                     onClick={() => handleIgnoreSuggestion(s.keyword)}
-                                                    style={{ color: 'var(--text-secondary)' }}
+                                                    style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                 >
-                                                    🗑️ Ignorar
+                                                    <Trash2 size={14} /> Ignorar
                                                 </button>
                                             </div>
                                         ) : (
@@ -503,8 +545,8 @@ export default function ClassifyPage() {
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{ex.data}</span>
                                                     {ex.banco && (
-                                                        <span className="badge badge-secondary" style={{ fontSize: '0.75rem', padding: '2px 6px' }}>
-                                                            {ex.tipo === 'CREDIT' || ex.tipo === 'CREDIT_CARD' ? '💳 ' : '🏦 '}
+                                                        <span className="badge badge-secondary" style={{ fontSize: '0.75rem', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                            {ex.tipo === 'CREDIT' || ex.tipo === 'CREDIT_CARD' ? <CreditCard size={12} /> : <Building2 size={12} />}
                                                             {ex.banco}
                                                         </span>
                                                     )}
@@ -526,8 +568,8 @@ export default function ClassifyPage() {
                                 </div>
 
                                 {/* Inline classify form */}
-                                {editingSuggestion === idx && (
-                                    <div className="suggestion-classify" style={{ marginTop: '14px' }}>
+                                {isClassifyingThisSug && (
+                                    <div className="suggestion-classify" style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                         <div className="classify-row">
                                             <input
                                                 className="form-input"
@@ -547,10 +589,34 @@ export default function ClassifyPage() {
                                             <button
                                                 className="btn btn-primary"
                                                 disabled={!sugCategoria.trim()}
-                                                onClick={() => handleApplySuggestion(s, idx)}
+                                                onClick={() => handleApplySuggestion(s)}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                             >
                                                 Salvar → classifica {displayCount}
                                             </button>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginTop: '4px' }}>
+                                            <label className="modal-checkbox-row" style={{ cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={sugIsCustoFixo}
+                                                    onChange={(e) => setSugIsCustoFixo(e.target.checked)}
+                                                />
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem' }}>
+                                                    <Pin size={13} color="var(--accent-primary)" /> Custo Fixo
+                                                </span>
+                                            </label>
+
+                                            <label className="modal-checkbox-row" style={{ cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={sugIgnorarDashboard}
+                                                    onChange={(e) => setSugIgnorarDashboard(e.target.checked)}
+                                                />
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem' }}>
+                                                    <EyeOff size={13} color="var(--warning)" /> Ignorar no Dashboard
+                                                </span>
+                                            </label>
                                         </div>
                                     </div>
                                 )}

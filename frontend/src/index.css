@@ -1576,4 +1576,141 @@ tr:hover td {
   font-size: 11px;
 }
 
+/* Tooltip Interativo Explicativo */
+.info-tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  cursor: pointer;
+}
+
+.info-tooltip-wrapper .info-tooltip-content {
+  visibility: hidden;
+  opacity: 0;
+  width: 240px;
+  background-color: #1e293b;
+  color: #f8fafc;
+  text-align: left;
+  border-radius: 8px;
+  padding: 10px 12px;
+  position: absolute;
+  z-index: 9999;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.4;
+  pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.info-tooltip-wrapper .info-tooltip-content::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1e293b transparent transparent transparent;
+}
+
+.info-tooltip-wrapper:hover .info-tooltip-content {
+  visibility: visible;
+  opacity: 1;
+}
+
+.modal-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.modal-checkbox-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--accent-primary);
+}
+
+.modal-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.modal-checkbox-compact {
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.modal-checkbox-compact:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Transações Ignoradas do Dashboard na Tabela */
+tr.tr-ignored {
+  background-color: rgba(30, 41, 59, 0.4) !important;
+  opacity: 0.7;
+}
+
+tr.tr-ignored td {
+  color: var(--text-muted) !important;
+}
+
+/* Badge discreto de Transação Manual */
+.badge-manual {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+/* Prevenção de Layout Shift nos Stat Cards do Dashboard */
+.stat-card-kpi {
+  border: 2px solid transparent !important;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.stat-card-kpi.active-receita {
+  border-color: var(--green, #10b981) !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25) !important;
+}
+
+.stat-card-kpi.active-despesa {
+  border-color: var(--warning, #f59e0b) !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25) !important;
+}
+
+.stat-card-kpi.active-todos {
+  border-color: var(--accent-primary, #6366f1) !important;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.25) !important;
+}
+
+/* Alinhamento de ícones Lucide com texto */
+.icon-align {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+
+
 

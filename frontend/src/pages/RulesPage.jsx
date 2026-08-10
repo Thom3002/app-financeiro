@@ -1,18 +1,46 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useVisibility } from '../contexts/VisibilityContext';
+import CategoryTreeSelect from '../components/CategoryTreeSelect';
+import {
+    ShieldCheck,
+    Plus,
+    Pencil,
+    Trash2,
+    Play,
+    Check,
+    X,
+    Info,
+    Code,
+    Sparkles,
+    Download,
+    Upload,
+    Search,
+    Filter,
+    HelpCircle,
+    Eye
+} from 'lucide-react';
+
+function friendlyToRegex(text) {
+    if (!text) return '';
+    const parts = text.trim().split(/\s+/).map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return parts.join('.*');
+}
 
 export default function RulesPage() {
-    const { isVisible, toggleVisibility } = useVisibility();
+    const { isVisible } = useVisibility();
     const [rules, setRules] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingRule, setEditingRule] = useState(null);
     const [form, setForm] = useState(getEmptyForm());
+    const [userPatternText, setUserPatternText] = useState('');
+    const [rawRegexMode, setRawRegexMode] = useState(false);
+
     const [testResult, setTestResult] = useState(null);
     const [testText, setTestText] = useState('');
     const [showSimulate, setShowSimulate] = useState(false);
-    const [allCategories, setAllCategories] = useState([]); // [{id, nome, children:[]}]
+    const [allCategories, setAllCategories] = useState([]);
     const [simForm, setSimForm] = useState({
         dataInicio: '',
         dataFim: '',
@@ -36,9 +64,9 @@ export default function RulesPage() {
         };
     }
 
-    const [ruleFilterCat, setRuleFilterCat] = useState('');
+    const [ruleFilterCat, setRuleFilterCat] = useState([]);
     const [ruleSearch, setRuleSearch] = useState('');
-    const [ruleSortBy, setRuleSortBy] = useState('priority'); // 'priority' | 'category'
+    const [ruleSortBy, setRuleSortBy] = useState('priority');
 
     const loadRules = useCallback(async () => {
         setLoading(true);
@@ -71,6 +99,8 @@ export default function RulesPage() {
     const openNew = () => {
         setEditingRule(null);
         setForm(getEmptyForm());
+        setUserPatternText('');
+        setRawRegexMode(false);
         setTestResult(null);
         setTestText('');
         setFormError('');
@@ -90,10 +120,31 @@ export default function RulesPage() {
             enabled: rule.enabled,
             overwrite_manual: rule.overwrite_manual,
         });
+        setUserPatternText(rule.regex);
+        setRawRegexMode(true); // Na edição, abre em modo regex para preservar exatidão
         setTestResult(null);
         setTestText('');
         setFormError('');
         setShowModal(true);
+    };
+
+    const handlePatternChange = (val) => {
+        setUserPatternText(val);
+        if (!rawRegexMode) {
+            setForm(f => ({ ...f, regex: friendlyToRegex(val) }));
+        } else {
+            setForm(f => ({ ...f, regex: val }));
+        }
+    };
+
+    const toggleRawMode = (e) => {
+        const checked = e.target.checked;
+        setRawRegexMode(checked);
+        if (!checked) {
+            setForm(f => ({ ...f, regex: friendlyToRegex(userPatternText) }));
+        } else {
+            setForm(f => ({ ...f, regex: userPatternText }));
+        }
     };
 
     const saveRule = async () => {
@@ -105,7 +156,7 @@ export default function RulesPage() {
         }
         const cleanRegex = (form.regex || '').trim();
         if (!cleanRegex) {
-            setFormError("Informe a expressão regular (regex) para a regra.");
+            setFormError("Informe o texto ou expressão regular para a regra.");
             return;
         }
 
@@ -113,7 +164,7 @@ export default function RulesPage() {
             (r) => (!editingRule || r.id !== editingRule.id) && r.regex.trim().toLowerCase() === cleanRegex.toLowerCase()
         );
         if (duplicate) {
-            setFormError(`Já existe uma regra cadastrada com o regex '${cleanRegex}' para a categoria '${duplicate.categoria}'.`);
+            setFormError(`Já existe uma regra cadastrada com a busca '${cleanRegex}' para a categoria '${duplicate.categoria}'.`);
             return;
         }
 
@@ -216,7 +267,11 @@ export default function RulesPage() {
 
     const filteredRules = rules
         .filter(r => {
-            if (ruleFilterCat && r.categoria !== ruleFilterCat) return false;
+            if (Array.isArray(ruleFilterCat) && ruleFilterCat.length > 0) {
+                if (!ruleFilterCat.includes(r.categoria) && !ruleFilterCat.includes(r.subcategoria)) return false;
+            } else if (typeof ruleFilterCat === 'string' && ruleFilterCat && r.categoria !== ruleFilterCat && r.subcategoria !== ruleFilterCat) {
+                return false;
+            }
             if (ruleSearch) {
                 const searchLower = ruleSearch.toLowerCase();
                 const matchRegex = (r.regex || '').toLowerCase().includes(searchLower);
@@ -238,16 +293,24 @@ export default function RulesPage() {
         <div>
             <div className="page-header flex-between">
                 <div>
-                    <h2>⚙️ Regras de Classificação</h2>
+                    <h2 className="icon-align" style={{ gap: '8px' }}>
+                        <ShieldCheck size={24} color="var(--accent-primary)" /> Regras de Auto-Classificação
+                    </h2>
                     <p>{rules.length} regra(s) configurada(s)</p>
                 </div>
                 <div className="btn-group">
-                    <button className="btn btn-secondary" onClick={handleImport}>📥 Importar</button>
-                    <button className="btn btn-secondary" onClick={handleExport}>📤 Exportar</button>
-                    <button className="btn btn-secondary" onClick={() => setShowSimulate(!showSimulate)}>
-                        🔍 Simular
+                    <button className="btn btn-secondary" onClick={handleImport} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Upload size={15} /> Importar
                     </button>
-                    <button className="btn btn-primary" onClick={openNew}>+ Nova Regra</button>
+                    <button className="btn btn-secondary" onClick={handleExport} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Download size={15} /> Exportar
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => setShowSimulate(!showSimulate)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Eye size={15} /> Simular
+                    </button>
+                    <button className="btn btn-primary" onClick={openNew} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Plus size={16} /> Nova Regra
+                    </button>
                 </div>
             </div>
 
@@ -258,24 +321,21 @@ export default function RulesPage() {
                         <input
                             type="text"
                             className="form-input"
-                            placeholder="🔍 Buscar por regex ou categoria..."
+                            placeholder="Buscar por termo ou categoria..."
                             value={ruleSearch}
                             onChange={(e) => setRuleSearch(e.target.value)}
                         />
                     </div>
-                    <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8, minWidth: '220px' }}>
                         <span className="text-xs text-muted">Filtrar por Categoria:</span>
-                        <select
-                            className="form-select"
+                        <CategoryTreeSelect
+                            categories={allCategories}
+                            selectedValues={ruleFilterCat || []}
+                            onChange={(val) => setRuleFilterCat(val)}
+                            multiSelect={true}
+                            placeholder={`Todas as categorias (${distinctCategoriesInRules.length})`}
                             style={{ padding: '4px 8px', fontSize: '0.85rem' }}
-                            value={ruleFilterCat}
-                            onChange={(e) => setRuleFilterCat(e.target.value)}
-                        >
-                            <option value="">Todas as categorias ({distinctCategoriesInRules.length})</option>
-                            {distinctCategoriesInRules.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </select>
+                        />
                     </div>
                     <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span className="text-xs text-muted">Ordenar por:</span>
@@ -296,7 +356,9 @@ export default function RulesPage() {
             {showSimulate && (
                 <div className="card mb-6">
                     <div className="card-header">
-                        <h3 className="card-title">Simular / Reprocessar</h3>
+                        <h3 className="card-title icon-align" style={{ gap: '6px' }}>
+                            <Eye size={18} color="var(--accent-primary)" /> Simular / Reprocessar Regras
+                        </h3>
                     </div>
                     <div className="form-row">
                         <div className="form-group">
@@ -338,8 +400,12 @@ export default function RulesPage() {
                         </label>
                     </div>
                     <div className="btn-group">
-                        <button className="btn btn-secondary" onClick={handleSimulate}>🔍 Simular (Dry-run)</button>
-                        <button className="btn btn-primary" onClick={handleReprocess}>▶ Reprocessar</button>
+                        <button className="btn btn-secondary" onClick={handleSimulate} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <Eye size={14} /> Simular (Dry-run)
+                        </button>
+                        <button className="btn btn-primary" onClick={handleReprocess} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <Play size={14} /> Reprocessar Regras
+                        </button>
                     </div>
 
                     {simResult && (
@@ -381,7 +447,7 @@ export default function RulesPage() {
                 <div className="loading">Carregando regras...</div>
             ) : rules.length === 0 ? (
                 <div className="empty-state">
-                    <div className="empty-icon">⚙️</div>
+                    <div className="empty-icon"><ShieldCheck size={40} color="var(--accent-primary)" /></div>
                     <h3>Nenhuma regra cadastrada</h3>
                     <p>Crie regras para classificar automaticamente suas transações</p>
                 </div>
@@ -391,21 +457,25 @@ export default function RulesPage() {
                         <thead>
                             <tr>
                                 <th>Prior.</th>
-                                <th>Regex</th>
+                                <th>Padrão de Busca</th>
                                 <th>Campo</th>
                                 <th>Banco</th>
                                 <th>Sinal</th>
                                 <th>Categoria</th>
                                 <th>Subcategoria</th>
                                 <th>Status</th>
-                                <th></th>
+                                <th style={{ textAlign: 'center' }}>Ações</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredRules.map((r) => (
                                 <tr key={r.id} style={{ opacity: r.enabled ? 1 : 0.5 }}>
                                     <td>{r.priority}</td>
-                                    <td><code style={{ fontSize: '0.75rem', color: 'var(--accent-primary-hover)' }}>{r.regex}</code></td>
+                                    <td>
+                                        <code style={{ fontSize: '0.75rem', color: 'var(--accent-primary-hover)' }}>
+                                            {r.regex}
+                                        </code>
+                                    </td>
                                     <td className="text-xs">{r.campo_alvo}</td>
                                     <td className="text-xs">{r.banco_escopo}</td>
                                     <td className="text-xs">{r.sinal_escopo}</td>
@@ -416,13 +486,19 @@ export default function RulesPage() {
                                             {r.enabled ? 'Ativada' : 'Desativada'}
                                         </span>
                                     </td>
-                                    <td>
-                                        <div className="btn-group">
-                                            <button className="btn btn-sm btn-secondary" onClick={() => openEdit(r)}>✏️</button>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <div className="btn-group" style={{ justifyContent: 'center' }}>
+                                            <button className="btn btn-sm btn-secondary" onClick={() => openEdit(r)} title="Editar Regra">
+                                                <Pencil size={13} />
+                                            </button>
                                             {confirmDeleteId === r.id ? (
-                                                <button className="btn btn-sm btn-danger" onClick={() => deleteRule(r.id)}>Confirmar?</button>
+                                                <button className="btn btn-sm btn-danger" onClick={() => deleteRule(r.id)}>
+                                                    Confirmar?
+                                                </button>
                                             ) : (
-                                                <button className="btn btn-sm btn-danger" onClick={() => setConfirmDeleteId(r.id)}>🗑</button>
+                                                <button className="btn btn-sm btn-danger" onClick={() => setConfirmDeleteId(r.id)} title="Excluir Regra">
+                                                    <Trash2 size={13} />
+                                                </button>
                                             )}
                                         </div>
                                     </td>
@@ -433,29 +509,56 @@ export default function RulesPage() {
                 </div>
             )}
 
-            {/* Modal */}
+            {/* Modal de Criação e Edição de Regra com Editor Amigável de Regex */}
             {showModal && (
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
                         <div className="modal-header">
-                            <h3>{editingRule ? 'Editar Regra' : 'Nova Regra'}</h3>
+                            <h3 className="icon-align" style={{ gap: '8px' }}>
+                                <ShieldCheck size={20} color="var(--accent-primary)" />
+                                {editingRule ? 'Editar Regra' : 'Nova Regra de Auto-Classificação'}
+                            </h3>
                             <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
                         </div>
 
                         {formError && (
                             <div className="alert alert-danger" style={{ marginBottom: 16, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px 14px', borderRadius: '6px', fontSize: '0.85rem' }}>
-                                ⚠️ {formError}
+                                <X size={14} style={{ display: 'inline', marginRight: 4 }} /> {formError}
                             </div>
                         )}
-                        <div className="form-group">
-                            <label className="form-label">Regex</label>
-                            <input type="text" className="form-input"
-                                placeholder="uber|99.*pop"
-                                value={form.regex}
-                                onChange={(e) => setForm((f) => ({ ...f, regex: e.target.value }))}
+
+                        {/* Campo Padrão de Busca Amigável */}
+                        <div className="form-group mb-3">
+                            <div className="flex-between mb-1">
+                                <label className="form-label" style={{ marginBottom: 0 }}>
+                                    {rawRegexMode ? 'Expressão Regular (Regex)' : 'Padrão / Texto de Busca'}
+                                </label>
+                                <label className="text-xs text-muted" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={rawRegexMode}
+                                        onChange={toggleRawMode}
+                                    />
+                                    Modo Regex Avançado
+                                </label>
+                            </div>
+                            <input
+                                type="text"
+                                className="form-input"
+                                placeholder={rawRegexMode ? "Ex: uber|99.*pop" : "Ex: ifd vogue (busca por palavras contidas)"}
+                                value={userPatternText}
+                                onChange={(e) => handlePatternChange(e.target.value)}
                             />
+                            {!rawRegexMode && form.regex && (
+                                <div className="mt-1 flex gap-1" style={{ alignItems: 'center' }}>
+                                    <span className="text-xs text-muted" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <Code size={12} color="var(--accent-primary)" /> Regex compilado: <code>{form.regex}</code>
+                                    </span>
+                                </div>
+                            )}
                         </div>
-                        <div className="form-row">
+
+                        <div className="form-row mb-3">
                             <div className="form-group">
                                 <label className="form-label">Campo alvo</label>
                                 <select className="form-select"
@@ -489,11 +592,12 @@ export default function RulesPage() {
                                 </select>
                             </div>
                         </div>
-                        <div className="form-row">
+
+                        <div className="form-row mb-3">
                             <div className="form-group">
                                 <label className="form-label">Categoria *</label>
                                 <input type="text" className="form-input"
-                                    placeholder="Transporte"
+                                    placeholder="Ex: Transporte"
                                     value={form.categoria}
                                     onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value, subcategoria: '' }))}
                                     list="rules-cat-list"
@@ -505,7 +609,7 @@ export default function RulesPage() {
                             <div className="form-group">
                                 <label className="form-label">Subcategoria</label>
                                 <input type="text" className="form-input"
-                                    placeholder="Uber"
+                                    placeholder="Ex: Uber"
                                     value={form.subcategoria}
                                     onChange={(e) => setForm((f) => ({ ...f, subcategoria: e.target.value }))}
                                     list="rules-subcat-list"
@@ -522,38 +626,41 @@ export default function RulesPage() {
                                 />
                             </div>
                         </div>
-                        <div className="form-group">
+
+                        <div className="form-group mb-3">
                             <label className="form-checkbox">
                                 <input type="checkbox" checked={form.enabled}
                                     onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
                                 />
-                                Ativada
+                                Regra Ativada
                             </label>
                         </div>
 
                         {/* Test area */}
                         <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg-glass)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                            <label className="form-label">Testar regex</label>
+                            <label className="form-label">Testar Padrão em um texto de exemplo</label>
                             <div className="flex gap-2">
                                 <input type="text" className="form-input"
-                                    placeholder="Texto para testar..."
+                                    placeholder="Digite um texto de transação para testar..."
                                     value={testText}
                                     onChange={(e) => setTestText(e.target.value)}
                                 />
-                                <button className="btn btn-secondary btn-sm" onClick={handleTest}>Testar</button>
+                                <button className="btn btn-secondary btn-sm" onClick={handleTest} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <Check size={14} /> Testar
+                                </button>
                             </div>
                             {testResult && (
-                                <div className={`mt-4 badge ${testResult.matches ? 'badge-success' : 'badge-danger'}`}>
-                                    {testResult.matches ? '✅ Match!' : '❌ Não casou'}
+                                <div className={`mt-3 badge ${testResult.matches ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '0.8rem', padding: '4px 8px' }}>
+                                    {testResult.matches ? '✓ Casou com o texto!' : '✕ Não casou'}
                                     {testResult.error && ` — ${testResult.error}`}
                                 </div>
                             )}
                         </div>
 
-                        <div className="modal-footer">
+                        <div className="modal-footer mt-4">
                             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
                             <button className="btn btn-primary" onClick={saveRule} disabled={!form.regex || !form.categoria}>
-                                {editingRule ? 'Salvar' : 'Criar'}
+                                {editingRule ? 'Salvar Regra' : 'Criar Regra'}
                             </button>
                         </div>
                     </div>

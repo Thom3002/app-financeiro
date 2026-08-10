@@ -5,6 +5,22 @@ import {
     Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import { useVisibility } from '../contexts/VisibilityContext';
+import ClassificationModal from '../components/ClassificationModal';
+import CategoryTreeSelect from '../components/CategoryTreeSelect';
+import {
+    Tag,
+    Pencil,
+    EyeOff,
+    UserCheck,
+    TrendingUp,
+    TrendingDown,
+    Info,
+    Calendar,
+    Filter,
+    Sparkles,
+    RefreshCw,
+    Check
+} from 'lucide-react';
 
 // Cores distintas e vibrantes com alto contraste para as categorias
 const CATEGORY_COLORS = [
@@ -137,6 +153,15 @@ const getLast12MonthsDates = () => {
     };
 };
 
+function extractKeywordFromTx(tx) {
+    if (!tx) return '';
+    const text = (tx.descricao || tx.titulo || '').toLowerCase();
+    const noise = /\b(debito de cartao|rever par deb cartao|pix recebido de|pix enviado para|transf enviada pix|bra)\b/gi;
+    let cleaned = text.replace(noise, '').replace(/\s+/g, ' ').trim();
+    const words = cleaned.split(' ').filter(w => w.length > 2).slice(0, 3);
+    return words.join(' ').toUpperCase();
+}
+
 export default function DashboardPage() {
     const { isVisible } = useVisibility();
     const formatValue = (v) => (!isVisible ? '*****' : fmtCurrency(v));
@@ -145,6 +170,9 @@ export default function DashboardPage() {
     const [dateFilters, setDateFilters] = useState(() => getLast30DaysDates());
     const [activePreset, setActivePreset] = useState('last30Days');
 
+    // Estado de filtro por tipo (todos | receita | despesa)
+    const [tipoFilter, setTipoFilter] = useState('todos');
+
     // Estado de filtro multi-categoria nos gráficos
     const [selectedCategories, setSelectedCategories] = useState([]);
     const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
@@ -152,6 +180,7 @@ export default function DashboardPage() {
 
     // Estado da Aba de Gráfico selecionada ('category' | 'monthly')
     const [activeTab, setActiveTab] = useState('category');
+    const [hasChartAnimated, setHasChartAnimated] = useState(false);
 
     // Dados do Dashboard
     const [summary, setSummary] = useState(null);
@@ -169,6 +198,8 @@ export default function DashboardPage() {
         subcategoria: '',
         ignorar_dashboard: false,
         is_custo_fixo: false,
+        createRulePattern: '',
+        saveRule: false,
     });
 
     // Estados da Tabela de Transações abaixo dos gráficos
@@ -186,6 +217,7 @@ export default function DashboardPage() {
     // Carrega Resumo e Linha do Tempo
     const loadDashboardData = useCallback(async () => {
         setLoadingSummary(true);
+        setHasChartAnimated(false);
         try {
             const categoriasParam = selectedCategories.length > 0 ? selectedCategories.join(',') : undefined;
             const [s, t] = await Promise.all([
@@ -200,16 +232,22 @@ export default function DashboardPage() {
         setLoadingSummary(false);
     }, [dateFilters, selectedCategories]);
 
-    // Carrega Tabela de Transações (com base no período e filtros específicos da tabela)
+    // Carrega Tabela de Transações (com base no período, tipo e filtros específicos da tabela)
     const loadTransactions = useCallback(async () => {
         setTxLoading(true);
         try {
+            const tipoParam = tipoFilter === 'receita' ? 'entrada' : tipoFilter === 'despesa' ? 'saida' : (txFilters.tipo || undefined);
+            const catFilterToPass = Array.isArray(txFilters.categoria) && txFilters.categoria.length > 0
+                ? txFilters.categoria.join(',')
+                : (typeof txFilters.categoria === 'string' && txFilters.categoria ? txFilters.categoria : (selectedCategories.length > 0 ? selectedCategories.join(',') : undefined));
             const result = await api.getTransactions({
                 dataInicio: dateFilters.dataInicio,
                 dataFim: dateFilters.dataFim,
-                categoria: txFilters.categoria || (selectedCategories.length === 1 ? selectedCategories[0] : undefined),
+                categoria: catFilterToPass,
                 busca: txFilters.busca || undefined,
+                tipo: tipoParam,
                 ordem: txFilters.ordem,
+                orderBy: txFilters.orderBy,
                 page: txFilters.page,
                 limit: txFilters.limit,
             });
@@ -218,7 +256,7 @@ export default function DashboardPage() {
             console.error('Erro ao carregar transações da tabela:', e);
         }
         setTxLoading(false);
-    }, [dateFilters, txFilters, selectedCategories]);
+    }, [dateFilters, txFilters, selectedCategories, tipoFilter]);
 
     useEffect(() => {
         const refreshAll = () => {
@@ -252,6 +290,14 @@ export default function DashboardPage() {
             .catch(() => {});
     }, []);
 
+    // Marca animação como concluída após primeira renderização dos dados para evitar re-animações incômodas ao alternar abas
+    useEffect(() => {
+        if (!hasChartAnimated && summary) {
+            const timer = setTimeout(() => setHasChartAnimated(true), 700);
+            return () => clearTimeout(timer);
+        }
+    }, [summary, hasChartAnimated]);
+
     const getSubcategoryOptions = (catName) => {
         const cat = allCategories.find(c => c.nome === catName);
         return cat?.children || [];
@@ -264,18 +310,35 @@ export default function DashboardPage() {
             subcategoria: tx.subcategoria || '',
             ignorar_dashboard: !!tx.ignorar_dashboard,
             is_custo_fixo: !!tx.is_custo_fixo,
+            createRulePattern: extractKeywordFromTx(tx),
+            saveRule: false,
         });
     };
 
-    const saveEdit = async () => {
+    const saveEdit = async (editData) => {
         if (!editingTx) return;
         const scrollY = window.scrollY;
         try {
+            if (editData.saveRule && editData.createRulePattern && editData.categoria) {
+                await api.createRule({
+                    regex: editData.createRulePattern.trim(),
+                    campo_alvo: 'ambos',
+                    banco_escopo: 'qualquer',
+                    sinal_escopo: 'qualquer',
+                    categoria: editData.categoria,
+                    subcategoria: editData.subcategoria || undefined,
+                    priority: 100,
+                    enabled: true,
+                    overwrite_manual: false,
+                    set_custo_fixo: !!editData.is_custo_fixo,
+                    ignorar_dashboard: !!editData.ignorar_dashboard,
+                });
+            }
             await api.updateTransactionCategory(editingTx.id, {
-                categoria: editValues.categoria || null,
-                subcategoria: editValues.subcategoria || null,
-                ignorar_dashboard: editValues.ignorar_dashboard,
-                is_custo_fixo: editValues.is_custo_fixo,
+                categoria: editData.categoria || null,
+                subcategoria: editData.subcategoria || null,
+                ignorar_dashboard: editData.ignorar_dashboard,
+                is_custo_fixo: editData.is_custo_fixo,
                 is_manual: true,
             });
             setEditingTx(null);
@@ -443,114 +506,16 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="flex gap-2" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        {/* Seletor Multi-Categoria */}
+                        {/* Seletor de Categoria Multi-Seleção em Árvore no Canto Superior Direito */}
                         <div style={{ position: 'relative', display: 'inline-block' }}>
-                            <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => setIsCatDropdownOpen(!isCatDropdownOpen)}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    borderColor: selectedCategories.length > 0 ? 'var(--accent-primary)' : 'var(--border-color)',
-                                    backgroundColor: selectedCategories.length > 0 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                                    color: selectedCategories.length > 0 ? 'var(--accent-primary)' : 'var(--text-primary)',
-                                    fontWeight: selectedCategories.length > 0 ? '600' : 'normal',
-                                }}
-                            >
-                                🏷️ {selectedCategories.length === 0
-                                    ? 'Todas as Categorias'
-                                    : `${selectedCategories.length} Categoria(s)`}
-                                <span style={{ fontSize: '10px' }}>▼</span>
-                            </button>
-
-                            {isCatDropdownOpen && (
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        top: '100%',
-                                        right: 0,
-                                        marginTop: '6px',
-                                        width: '280px',
-                                        maxHeight: '340px',
-                                        backgroundColor: 'var(--bg-card, #1e293b)',
-                                        border: '1px solid var(--border-color, #334155)',
-                                        borderRadius: '8px',
-                                        boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                                        zIndex: 100,
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        padding: '12px',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Filtrar por Categorias</span>
-                                        {selectedCategories.length > 0 && (
-                                            <button
-                                                style={{ border: 'none', background: 'transparent', color: 'var(--accent-danger, #ef4444)', fontSize: '11px', cursor: 'pointer' }}
-                                                onClick={() => setSelectedCategories([])}
-                                            >
-                                                Limpar ({selectedCategories.length})
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="Buscar categoria..."
-                                        value={catSearch}
-                                        onChange={(e) => setCatSearch(e.target.value)}
-                                        style={{ marginBottom: '8px', padding: '4px 8px', fontSize: '12px' }}
-                                    />
-
-                                    <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px' }}>
-                                        {categoriesList
-                                            .filter((cat) => cat.toLowerCase().includes(catSearch.toLowerCase()))
-                                            .map((cat) => {
-                                                const isChecked = selectedCategories.includes(cat);
-                                                return (
-                                                    <label
-                                                        key={cat}
-                                                        style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            fontSize: '13px',
-                                                            padding: '4px 6px',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                                                        }}
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isChecked}
-                                                            onChange={() => {
-                                                                if (isChecked) {
-                                                                    setSelectedCategories(selectedCategories.filter((c) => c !== cat));
-                                                                } else {
-                                                                    setSelectedCategories([...selectedCategories, cat]);
-                                                                }
-                                                            }}
-                                                        />
-                                                        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                            {cat}
-                                                        </span>
-                                                    </label>
-                                                );
-                                            })}
-                                    </div>
-                                    
-                                    <button
-                                        className="btn btn-primary btn-sm"
-                                        style={{ marginTop: '10px', width: '100%', textAlign: 'center' }}
-                                        onClick={() => setIsCatDropdownOpen(false)}
-                                    >
-                                        Aplicar Filtro
-                                    </button>
-                                </div>
-                            )}
+                            <CategoryTreeSelect
+                                categories={allCategories}
+                                selectedValues={selectedCategories}
+                                onChange={setSelectedCategories}
+                                multiSelect={true}
+                                placeholder="Todas as Categorias"
+                                style={{ width: 'auto', minWidth: '180px' }}
+                            />
                         </div>
 
                         <span className="text-xs text-muted">de</span>
@@ -579,32 +544,47 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* Grid de Cards de Resumo */}
+            {/* Grid de Cards de Resumo Sem Layout Shift (Sem pulinho na tela) */}
             <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-                <div className="stat-card">
+                <div
+                    className={`stat-card stat-card-kpi ${tipoFilter === 'receita' ? 'active-receita' : ''}`}
+                    onClick={() => setTipoFilter(tipoFilter === 'receita' ? 'todos' : 'receita')}
+                    style={{ cursor: 'pointer' }}
+                    title="Clique para filtrar apenas Receitas na tabela e gráficos abaixo"
+                >
                     <div className="stat-label flex-between">
-                        <span>Receita período</span>
-                        <span style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: '1.2rem' }}>↑</span>
+                        <span>Receita período {tipoFilter === 'receita' && '✓'}</span>
+                        <span style={{ color: 'var(--green)' }} className="icon-align"><TrendingUp size={18} /></span>
                     </div>
                     <div className="stat-value positive">{formatValue(summary?.entradas || 0)}</div>
                 </div>
 
-                <div className="stat-card">
+                <div
+                    className={`stat-card stat-card-kpi ${tipoFilter === 'despesa' ? 'active-despesa' : ''}`}
+                    onClick={() => setTipoFilter(tipoFilter === 'despesa' ? 'todos' : 'despesa')}
+                    style={{ cursor: 'pointer' }}
+                    title="Clique para filtrar apenas Despesas na tabela e gráficos abaixo"
+                >
                     <div className="stat-label flex-between">
-                        <span>Despesa período</span>
-                        <span style={{ color: 'var(--warning)', fontWeight: 'bold', fontSize: '1.2rem' }}>↓</span>
+                        <span>Despesa período {tipoFilter === 'despesa' && '✓'}</span>
+                        <span style={{ color: 'var(--warning)' }} className="icon-align"><TrendingDown size={18} /></span>
                     </div>
                     <div className="stat-value negative">{formatValue(summary?.saidas || 0)}</div>
                 </div>
 
-                <div className="stat-card">
-                    <div className="stat-label">Saldo do Período</div>
+                <div
+                    className="stat-card stat-card-kpi"
+                    title="Saldo líquido no período selecionado"
+                >
+                    <div className="stat-label flex-between">
+                        <span>Saldo do Período</span>
+                    </div>
                     <div className={`stat-value ${(summary?.saldo || 0) >= 0 ? 'positive' : 'negative'}`}>
                         {formatValue(summary?.saldo || 0)}
                     </div>
                 </div>
 
-                <div className="stat-card">
+                <div className="stat-card stat-card-kpi">
                     <div className="stat-label">Total Transações</div>
                     <div className="stat-value">{summary?.totalTransactions || 0}</div>
                 </div>
@@ -654,6 +634,9 @@ export default function DashboardPage() {
                                                 innerRadius={70}
                                                 outerRadius={110}
                                                 paddingAngle={2}
+                                                isAnimationActive={!hasChartAnimated}
+                                                animationDuration={600}
+                                                animationEasing="ease-out"
                                                 style={{ cursor: 'pointer', outline: 'none' }}
                                                 onClick={handlePieSliceClick}
                                                 label={({ percent }) => (percent > 0.03 ? `${(percent * 100).toFixed(1)}%` : '')}
@@ -774,6 +757,9 @@ export default function DashboardPage() {
                                                 innerRadius={70}
                                                 outerRadius={110}
                                                 paddingAngle={2}
+                                                isAnimationActive={!hasChartAnimated}
+                                                animationDuration={600}
+                                                animationEasing="ease-out"
                                                 style={{ cursor: 'pointer', outline: 'none' }}
                                                 onClick={handlePieSliceClick}
                                                 label={({ percent }) => (percent > 0.03 ? `${(percent * 100).toFixed(1)}%` : '')}
@@ -913,115 +899,24 @@ export default function DashboardPage() {
                 )}
             </div>
 
-            {/* Modal de Edição / Classificação na Carteira */}
-            {editingTx && (() => {
-                const fullText = ((editingTx.titulo || '') + ' ' + (editingTx.descricao || '')).toUpperCase();
-                const isFatura = fullText.includes('FATURA') || fullText.includes('PAGTO FATURA') || fullText.includes('PAGAMENTO FATURA');
-                const isUnclassified = !editingTx.categoria || editingTx.categoria === 'Não classificado';
-
-                return (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                        <div className="card" style={{ maxWidth: 520, width: '100%', padding: 24 }}>
-                            <div className="card-header" style={{ marginBottom: 16 }}>
-                                <h3 className="card-title">
-                                    {isUnclassified ? '🏷️ Classificar Transação' : '✏️ Editar Transação'}
-                                </h3>
-                                <button className="btn btn-sm btn-secondary" onClick={() => setEditingTx(null)}>✕</button>
-                            </div>
-
-                            <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500, marginBottom: 16 }}>
-                                {editingTx.descricao || editingTx.titulo} ({formatValue(editingTx.valor)})
-                            </p>
-
-                            {/* Banner Inteligente de Pagamento de Fatura */}
-                            {isFatura && (
-                                <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 16 }}>
-                                    <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: 4 }}>
-                                        💡 Pagamento de Fatura de Cartão Detectado
-                                    </div>
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
-                                        Recomendamos ignorar este lançamento do Dashboard para evitar a contagem dupla de despesas na sua carteira.
-                                    </p>
-                                    <button
-                                        type="button"
-                                        className={`btn btn-sm ${editValues.ignorar_dashboard ? 'btn-secondary' : 'btn-warning'}`}
-                                        onClick={() => setEditValues((prev) => ({ ...prev, ignorar_dashboard: !prev.ignorar_dashboard }))}
-                                    >
-                                        {editValues.ignorar_dashboard ? '✓ Ignorando do Dashboard' : '⚡ Ignorar do Dashboard (1 Clique)'}
-                                    </button>
-                                </div>
-                            )}
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                <div>
-                                    <label className="form-label">Categoria (digite uma nova ou selecione)</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="Ex: Transporte, Alimentação..."
-                                        value={editValues.categoria}
-                                        onChange={(e) => setEditValues({ ...editValues, categoria: e.target.value })}
-                                        list="dash-modal-cat-list"
-                                    />
-                                    <datalist id="dash-modal-cat-list">
-                                        {allCategories.map((c) => (
-                                            <option key={c.id || c.nome} value={c.nome} />
-                                        ))}
-                                    </datalist>
-                                </div>
-
-                                <div>
-                                    <label className="form-label">Subcategoria (Opcional)</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="Ex: Uber, Metrô..."
-                                        value={editValues.subcategoria}
-                                        onChange={(e) => setEditValues({ ...editValues, subcategoria: e.target.value })}
-                                        list="dash-modal-subcat-list"
-                                    />
-                                    <datalist id="dash-modal-subcat-list">
-                                        {getSubcategoryOptions(editValues.categoria).map((s) => (
-                                            <option key={s.id || s.nome} value={s.nome} />
-                                        ))}
-                                    </datalist>
-                                </div>
-
-                                {/* Botões Interativos de Toggle Rápido */}
-                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                                    <button
-                                        type="button"
-                                        className={`btn btn-sm ${editValues.is_custo_fixo ? 'btn-primary' : 'btn-secondary'}`}
-                                        onClick={() => setEditValues((prev) => ({ ...prev, is_custo_fixo: !prev.is_custo_fixo }))}
-                                        style={{ borderRadius: 20 }}
-                                    >
-                                        📌 {editValues.is_custo_fixo ? 'Custo Fixo (Ativo)' : 'Marcar como Custo Fixo'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`btn btn-sm ${editValues.ignorar_dashboard ? 'btn-warning' : 'btn-secondary'}`}
-                                        onClick={() => setEditValues((prev) => ({ ...prev, ignorar_dashboard: !prev.ignorar_dashboard }))}
-                                        style={{ borderRadius: 20 }}
-                                    >
-                                        {editValues.ignorar_dashboard ? '🙈 Ignorando do Dashboard' : '👁️ Exibir no Dashboard'}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-                                <button className="btn btn-secondary" onClick={() => setEditingTx(null)}>Cancelar</button>
-                                <button className="btn btn-primary" onClick={saveEdit}>Salvar Transação</button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
+            {/* Modal de Edição / Classificação Detalhada na Carteira */}
+            {editingTx && (
+                <ClassificationModal
+                    tx={editingTx}
+                    allCategories={allCategories}
+                    onSave={saveEdit}
+                    onClose={() => setEditingTx(null)}
+                    isVisible={isVisible}
+                />
+            )}
 
             {/* Seção da Tabela de Transações (Directamente abaixo dos gráficos) */}
             <div className="card">
                 <div className="flex-between mb-4" style={{ flexWrap: 'wrap', gap: 12 }}>
                     <div>
-                        <h3 className="card-title">Transações do Período</h3>
+                        <h3 className="card-title icon-align" style={{ gap: '8px' }}>
+                            <Tag size={20} color="var(--accent-primary)" /> Transações do Período
+                        </h3>
                         <p className="card-subtitle">
                             Exibindo registros ordenados por data
                         </p>
@@ -1054,29 +949,25 @@ export default function DashboardPage() {
                         />
                     </div>
 
-                    <div className="form-group" style={{ flex: '1 1 180px' }}>
+                    <div className="form-group" style={{ flex: '1 1 220px' }}>
                         <label className="form-label">Categoria</label>
-                        <select
-                            className="form-select"
-                            value={txFilters.categoria}
-                            onChange={(e) => setTxFilters((prev) => ({ ...prev, categoria: e.target.value, page: 1 }))}
-                        >
-                            <option value="">Todas as categorias</option>
-                            {categoriesList.map((c) => (
-                                <option key={c} value={c}>
-                                    {c}
-                                </option>
-                            ))}
-                        </select>
+                        <CategoryTreeSelect
+                            categories={allCategories}
+                            selectedValues={txFilters.categoria || []}
+                            onChange={(val) => setTxFilters((prev) => ({ ...prev, categoria: val, page: 1 }))}
+                            multiSelect={true}
+                            placeholder="Todas as categorias"
+                        />
                     </div>
 
-                    {(txFilters.busca || txFilters.categoria) && (
+                    {(txFilters.busca || (Array.isArray(txFilters.categoria) ? txFilters.categoria.length > 0 : txFilters.categoria)) && (
                         <div className="form-group" style={{ alignSelf: 'flex-end' }}>
                             <button
                                 className="btn btn-secondary btn-sm"
-                                onClick={() => setTxFilters((prev) => ({ ...prev, busca: '', categoria: '', page: 1 }))}
+                                onClick={() => setTxFilters((prev) => ({ ...prev, busca: '', categoria: [], page: 1 }))}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                             >
-                                🧹 Limpar Filtros
+                                <Filter size={13} /> Limpar Filtros
                             </button>
                         </div>
                     )}
@@ -1087,7 +978,7 @@ export default function DashboardPage() {
                     <div className="loading" style={{ padding: '40px 0' }}>Carregando transações...</div>
                 ) : txData.items.length === 0 ? (
                     <div className="empty-state" style={{ padding: '40px 0' }}>
-                        <div className="empty-icon">📭</div>
+                        <div className="empty-icon"><Sparkles size={40} color="var(--accent-primary)" /></div>
                         <h3>Nenhuma transação encontrada</h3>
                         <p>Tente ajustar o período ou os filtros aplicados.</p>
                     </div>
@@ -1121,13 +1012,21 @@ export default function DashboardPage() {
                                     {txData.items.map((t) => {
                                         const isUnclassified = !t.categoria || t.categoria === 'Não classificado';
                                         return (
-                                            <tr key={t.id} style={{ opacity: t.ignorar_dashboard ? 0.75 : 1 }}>
+                                            <tr key={t.id} className={t.ignorar_dashboard ? 'tr-ignored' : ''}>
                                                 <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
                                                     {formatDate(t.data)}
                                                 </td>
                                                 <td>
-                                                    <div className="font-medium truncate" title={t.titulo || t.descricao}>
-                                                        {t.titulo || t.descricao}
+                                                    <div className="font-medium truncate" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title={t.titulo || t.descricao}>
+                                                        {t.ignorar_dashboard && (
+                                                            <span className="info-tooltip-wrapper">
+                                                                <EyeOff size={14} color="var(--warning)" />
+                                                                <span className="info-tooltip-content">
+                                                                    Esta transação está ignorada do Dashboard e excluída dos cálculos de saldo e gráficos.
+                                                                </span>
+                                                            </span>
+                                                        )}
+                                                        <span>{t.titulo || t.descricao}</span>
                                                     </div>
                                                     {t.titulo && t.descricao && t.titulo !== t.descricao && (
                                                         <div className="text-xs text-muted truncate" title={t.descricao}>
@@ -1147,11 +1046,10 @@ export default function DashboardPage() {
                                                             </span>
                                                             {t.is_manual && (
                                                                 <span
-                                                                    className="badge"
-                                                                    style={{ backgroundColor: 'rgba(234, 179, 8, 0.15)', color: '#ca8a04', border: '1px solid rgba(234, 179, 8, 0.3)', fontSize: '10px', padding: '2px 5px' }}
-                                                                    title="Classificada manualmente pelo usuário (protegida contra novas regras)"
+                                                                    className="badge-manual"
+                                                                    title="Classificação definida manualmente pelo usuário. Fica salva e protegida contra reclassificações automáticas."
                                                                 >
-                                                                    ✋ Manual
+                                                                    <UserCheck size={11} /> Manual
                                                                 </span>
                                                             )}
                                                         </div>
@@ -1171,18 +1069,18 @@ export default function DashboardPage() {
                                                             className="btn btn-sm btn-primary"
                                                             onClick={() => startEdit(t)}
                                                             title="Classificar esta transação"
-                                                            style={{ fontWeight: 600, padding: '2px 8px', fontSize: '0.78rem' }}
+                                                            style={{ fontWeight: 600, padding: '2px 8px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                         >
-                                                            🏷️ Classificar
+                                                            <Tag size={13} /> Classificar
                                                         </button>
                                                     ) : (
                                                         <button
                                                             className="btn btn-sm btn-secondary"
                                                             onClick={() => startEdit(t)}
                                                             title="Editar categoria e opções"
-                                                            style={{ padding: '2px 8px', fontSize: '0.78rem' }}
+                                                            style={{ padding: '2px 8px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                         >
-                                                            ✏️ Editar
+                                                            <Pencil size={13} /> Editar
                                                         </button>
                                                     )}
                                                 </td>
