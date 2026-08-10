@@ -1,3 +1,9 @@
 #!/bin/sh
-cd backend
-npm run test
+echo "📦 Verificando build de produção do Frontend..."
+cd frontend && npm run build || exit 1
+
+echo "📦 Verificando compilação do Backend..."
+cd ../backend && npm run build || exit 1
+
+echo "🧪 Executando bateria de testes..."
+npm run test || exit 1

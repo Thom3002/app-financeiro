@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.13] - 2026-08-10
+
+### Fixed
+- **Resolução de Erros de TDZ e Renderização no Frontend**:
+  - Reordenadas as declarações de callbacks (`refreshCategories`, `loadDashboardData`, `loadTransactions`, `loadRules`) em `DashboardPage`, `TransactionsPage` e `RulesPage`, eliminando exceções de Temporal Dead Zone (`Cannot access 'q' before initialization`) em builds minificados de produção.
+
+### Added
+- **Travas de Segurança contra Regressões de Produção**:
+  - Atualizado o hook pre-push do Husky (`.husky/pre-push`) para validar a compilação do frontend (`npm run build`) e do backend antes de autorizar envios para o repositório.
+  - Integrado o script `"build:all"` no comando `"start:electron"` do `package.json`, testando sempre o bundle de produção compilado ao iniciar a aplicação localmente.
+
 ## [1.1.12] - 2026-08-10
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "app-financeiro-backend",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "description": "App Financeiro - NestJS Backend",
   "private": true,
   "repository": {
@@ -9,13 +9,14 @@
   },
   "scripts": {
     "build": "nest build",
+    "build:all": "cd ../frontend && npm run build && cd ../backend && npm run build",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "start:electron": "npm run build && cross-env ELECTRON_ENABLE_LOGGING=1 electron .",
+    "start:electron": "npm run build:all && cross-env ELECTRON_ENABLE_LOGGING=1 electron .",
     "rebuild:electron": "electron-builder install-app-deps",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
