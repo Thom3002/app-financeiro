@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.14] - 2026-08-10
+
+### Added
+- **Reformulação do Algoritmo de Sugestões de Classificação**:
+  - Substituída a abordagem baseada em N-grams por um pipeline de **Extração Heurística em 3 Camadas** (Extração Estrutural de Formatos Bancários, Normalização Inteligente e Merge Fuzzy com Prefixo Comum).
+  - Preservação de nomes completos de pessoas em transferências Pix (ex: "Ana Carolina Ferreira Martins Vieira") e consolidação de marcas (Uber, 99* POP).
+  - Criada documentação executiva do algoritmo em [docs/algoritmo_sugestoes.md](file:///c:/Users/Thomas/Desktop/ProjetosPessoais/app-financeiro/app-financeiro/docs/algoritmo_sugestoes.md).
+
+### Fixed
+- **Padronização do Filtro de Categorias (CategoryTreeSelect)**:
+  - Adicionada confirmação diferida via botão "Aplicar Filtro" no `CategoryTreeSelect` com rascunho de estado local.
+  - Reutilizado o componente `CategoryTreeSelect` em modo multi-seleção (`multiSelect={true}`) em todas as telas da aplicação (Dashboard, Transações e Regras).
+  - Atualizada a consulta SQL do backend em `transactions.service.ts` para suporte a filtros de múltiplas categorias via `IN (:...cats)`.
+- **Persistência Global e Auto-Sincronização de Categorias**:
+  - Implementada sincronização automática de categorias órfãs (`syncOrphanCategories`) em `CategoriesService`, garantindo que qualquer categoria/subcategoria criada na carteira, modal de transações ou regras seja exibida na aba de Categorias e seletores.
+  - Adicionada atualização em cascata no banco de dados ao renomear categorias e notificação em tempo real entre abas via evento `unclassified-count-changed`.
+
 ## [1.1.13] - 2026-08-10
 
 ### Fixed
