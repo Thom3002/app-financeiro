@@ -17,13 +17,27 @@ import { PluggyItem } from './entities/pluggy-item.entity';
 import { Setting } from './entities/setting.entity';
 import { PluggyModule } from './pluggy/pluggy.module';
 
+import { existsSync } from 'fs';
+
+function getFrontendDistPath(): string {
+  const candidates = [
+    join(process.env.APP_PATH || '', '..', 'frontend', 'dist'),
+    join((process as any).resourcesPath || '', 'frontend', 'dist'),
+    join(process.cwd(), '..', 'frontend', 'dist'),
+    join(process.cwd(), 'frontend', 'dist'),
+  ];
+  for (const pathCandidate of candidates) {
+    if (pathCandidate && existsSync(pathCandidate)) {
+      return pathCandidate;
+    }
+  }
+  return candidates[0];
+}
+
 @Module({
   imports: [
     ServeStaticModule.forRoot({
-      // Como o frontend agora é um extraResource do Electron, ele fica na pasta Resources
-      rootPath: process.env.NODE_ENV === 'production'
-        ? join(process.env.APP_PATH || '', '..', 'frontend', 'dist')
-        : join(process.cwd(), '..', 'frontend', 'dist'),
+      rootPath: getFrontendDistPath(),
       exclude: ['/api/(.*)'],
     }),
     TypeOrmModule.forRoot({

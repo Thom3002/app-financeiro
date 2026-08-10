@@ -1,6 +1,6 @@
 {
   "name": "app-financeiro-backend",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "description": "App Financeiro - NestJS Backend",
   "private": true,
   "repository": {
@@ -92,6 +92,9 @@
         "repo": "app-financeiro"
       }
     ],
+    "asarUnpack": [
+      "**/better-sqlite3/**/*"
+    ],
     "files": [
       "!**/*",
       "desktop/**/*",
@@ -103,13 +106,6 @@
       {
         "from": "../frontend/dist",
         "to": "frontend/dist"
-      },
-      {
-        "from": "node_modules/better-sqlite3",
-        "to": "app/node_modules/better-sqlite3",
-        "filter": [
-          "**/*"
-        ]
       }
     ],
     "mac": {

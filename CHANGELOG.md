@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.12] - 2026-08-10
+
+### Fixed
+- **Empacotamento Electron e Tratamento de Startup**:
+  - Adicionado `asarUnpack` para `better-sqlite3` e removido `extraResources` redundante em `package.json`, corrigindo crash do banco SQLite no .exe de produção.
+  - Adicionada captura de exceções (`try/catch`) e tela visual de erro (`loadErrorFallbackScreen`) no `main.js` para inicialização resiliente.
+  - Aprimorada a busca de caminhos estáticos do frontend em `app.module.ts`.
+
 ## [1.1.11] - 2026-08-09
 
 ### Fixed

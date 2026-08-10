@@ -107,44 +107,130 @@ function createWindow(url) {
     }
 }
 
+let startupError = null;
+
 // ─── Inicialização do Backend NestJS ─────────────────────────────────────────
 async function startNestApp(devPath = null) {
+    startupError = null;
     const userDataPath = app.getPath('userData');
     if (!fs.existsSync(userDataPath)) {
         fs.mkdirSync(userDataPath, { recursive: true });
     }
 
-    if (devPath) {
-        const localDbDir = path.join(devPath, 'backend', 'data');
-        if (!fs.existsSync(localDbDir)) {
-            fs.mkdirSync(localDbDir, { recursive: true });
-        }
-        process.env.DATABASE_PATH = path.join(localDbDir, 'financeiro.db');
-        process.env.NODE_ENV = 'development';
-        console.log(`[Electron] [DEV] Carregando NestJS local de: ${devPath}`);
-        console.log(`[Electron] [DEV] Banco SQLite configurado em: ${process.env.DATABASE_PATH}`);
+    try {
+        if (devPath) {
+            const localDbDir = path.join(devPath, 'backend', 'data');
+            if (!fs.existsSync(localDbDir)) {
+                fs.mkdirSync(localDbDir, { recursive: true });
+            }
+            process.env.DATABASE_PATH = path.join(localDbDir, 'financeiro.db');
+            process.env.NODE_ENV = 'development';
+            console.log(`[Electron] [DEV] Carregando NestJS local de: ${devPath}`);
+            console.log(`[Electron] [DEV] Banco SQLite configurado em: ${process.env.DATABASE_PATH}`);
 
-        const localNestMainSrc = path.join(devPath, 'backend', 'dist', 'src', 'main.js');
-        const localNestMain = path.join(devPath, 'backend', 'dist', 'main.js');
-        if (fs.existsSync(localNestMainSrc)) {
-            require(localNestMainSrc);
+            const localNestMainSrc = path.join(devPath, 'backend', 'dist', 'src', 'main.js');
+            const localNestMain = path.join(devPath, 'backend', 'dist', 'main.js');
+            if (fs.existsSync(localNestMainSrc)) {
+                require(localNestMainSrc);
+            } else {
+                require(localNestMain);
+            }
         } else {
-            require(localNestMain);
-        }
-    } else {
-        process.env.DATABASE_PATH = path.join(userDataPath, 'financeiro.db');
-        process.env.NODE_ENV = 'production';
-        process.env.APP_PATH = app.getAppPath();
-        console.log(`[Electron] Banco SQLite configurado em: ${process.env.DATABASE_PATH}`);
+            process.env.DATABASE_PATH = path.join(userDataPath, 'financeiro.db');
+            process.env.NODE_ENV = 'production';
+            process.env.APP_PATH = app.getAppPath();
+            console.log(`[Electron] Banco SQLite configurado em: ${process.env.DATABASE_PATH}`);
 
-        const mainSrcPath = path.join(__dirname, '..', 'dist', 'src', 'main.js');
-        const mainPath = path.join(__dirname, '..', 'dist', 'main.js');
-        if (fs.existsSync(mainSrcPath)) {
-            require(mainSrcPath);
-        } else {
-            require(mainPath);
+            const mainSrcPath = path.join(__dirname, '..', 'dist', 'src', 'main.js');
+            const mainPath = path.join(__dirname, '..', 'dist', 'main.js');
+            if (fs.existsSync(mainSrcPath)) {
+                require(mainSrcPath);
+            } else {
+                require(mainPath);
+            }
         }
+    } catch (err) {
+        console.error('[Electron] Erro crítico ao carregar servidor backend NestJS:', err);
+        startupError = err;
     }
+}
+
+function loadErrorFallbackScreen(errorMessage) {
+    const safeError = String(errorMessage || 'Servidor backend não respondeu na porta 8000.')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Erro de Inicialização - App Financeiro</title>
+        <style>
+            body {
+                background-color: #0f172a;
+                color: #f8fafc;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+                padding: 20px;
+                box-sizing: border-box;
+                text-align: center;
+            }
+            .card {
+                background: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 12px;
+                padding: 32px;
+                max-width: 650px;
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            }
+            h1 { color: #f43f5e; font-size: 1.4rem; margin-top: 0; }
+            p { color: #94a3b8; font-size: 0.9rem; line-height: 1.5; }
+            .error-box {
+                background: #0f172a;
+                border: 1px solid #475569;
+                border-radius: 6px;
+                padding: 12px;
+                font-family: monospace;
+                font-size: 0.8rem;
+                color: #fda4af;
+                text-align: left;
+                overflow-x: auto;
+                margin: 16px 0;
+                max-height: 180px;
+                white-space: pre-wrap;
+            }
+            .btn {
+                background: #6366f1;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-weight: 600;
+                cursor: pointer;
+                font-size: 0.9rem;
+                transition: background 0.2s;
+            }
+            .btn:hover { background: #4f46e5; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>⚠️ Falha ao Iniciar o Servidor Backend</h1>
+            <p>O App Financeiro não conseguiu conectar ao serviço local backend. Isso pode ser causado por um módulo nativo indisponível ou bloqueio de porta.</p>
+            <div class="error-box">${safeError}</div>
+            <button class="btn" onclick="window.location.reload()">🔄 Tentar Novamente</button>
+        </div>
+    </body>
+    </html>
+    `;
+    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
+    createWindow(dataUrl);
 }
 
 // ─── Verificação de atualização via version-checker.ts ───────────────────────
@@ -272,14 +358,14 @@ if (!gotTheLock) {
                 const check = (attempt) => {
                     http.get(url, (res) => {
                         console.log(`[Electron] Backend pronto (Status: ${res.statusCode})`);
-                        resolve();
+                        resolve(true);
                     }).on('error', () => {
                         if (attempt < retries) {
                             console.log(`[Electron] Aguardando backend... (${attempt}/${retries})`);
                             setTimeout(() => check(attempt + 1), 500);
                         } else {
                             console.error('[Electron] Backend não respondeu a tempo.');
-                            resolve();
+                            resolve(false);
                         }
                     });
                 };
@@ -287,15 +373,27 @@ if (!gotTheLock) {
             });
         };
 
-        if (serverUrl.includes(':8000') || serverUrl.includes(':8001')) {
-            await waitForBackend(serverUrl);
+        let isBackendOk = false;
+        if (startupError) {
+            console.error('[Electron] Erro durante o startup do NestJS:', startupError);
+            isBackendOk = false;
+        } else if (serverUrl.includes(':8000') || serverUrl.includes(':8001')) {
+            isBackendOk = await waitForBackend(serverUrl);
+        } else {
+            isBackendOk = true;
         }
 
         // IMPORTANTE: setupIpcHandlers() deve ser chamado ANTES de createWindow()
         // para garantir que os handlers IPC já existam quando o renderer invocar
         // qualquer ipcRenderer.invoke() logo após o carregamento da página.
         setupIpcHandlers();
-        createWindow(serverUrl);
+
+        if (isBackendOk) {
+            createWindow(serverUrl);
+        } else {
+            const detail = startupError ? (startupError.stack || startupError.message || String(startupError)) : 'Servidor backend não respondeu na porta 8000 dentro do limite de tempo (10s).';
+            loadErrorFallbackScreen(detail);
+        }
 
         // Verificação silenciosa 3s após iniciar
         setTimeout(async () => {
@@ -313,7 +411,14 @@ if (!gotTheLock) {
         }, 3000);
 
         app.on('activate', () => {
-            if (BrowserWindow.getAllWindows().length === 0) createWindow(serverUrl);
+            if (BrowserWindow.getAllWindows().length === 0) {
+                if (isBackendOk) {
+                    createWindow(serverUrl);
+                } else {
+                    const detail = startupError ? (startupError.stack || startupError.message || String(startupError)) : 'Servidor backend não respondeu na porta 8000 dentro do limite de tempo (10s).';
+                    loadErrorFallbackScreen(detail);
+                }
+            }
         });
     });
 
