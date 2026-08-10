@@ -171,6 +171,55 @@ export default function DashboardPage() {
         is_custo_fixo: false,
     });
 
+    // Estados da Tabela de Transações abaixo dos gráficos
+    const [txData, setTxData] = useState({ items: [], total: 0, page: 1, totalPages: 0 });
+    const [txLoading, setTxLoading] = useState(true);
+    const [txFilters, setTxFilters] = useState({
+        busca: '',
+        categoria: '',
+        ordem: 'DESC',
+        orderBy: 'data',
+        page: 1,
+        limit: 50,
+    });
+
+    // Carrega Resumo e Linha do Tempo
+    const loadDashboardData = useCallback(async () => {
+        setLoadingSummary(true);
+        try {
+            const categoriasParam = selectedCategories.length > 0 ? selectedCategories.join(',') : undefined;
+            const [s, t] = await Promise.all([
+                api.getDashboardSummary({ ...dateFilters, categorias: categoriasParam }),
+                api.getDashboardTimeline({ ...getLast12MonthsDates(), categorias: categoriasParam }),
+            ]);
+            setSummary(s);
+            setTimeline(t);
+        } catch (e) {
+            console.error('Erro ao carregar dados do dashboard:', e);
+        }
+        setLoadingSummary(false);
+    }, [dateFilters, selectedCategories]);
+
+    // Carrega Tabela de Transações (com base no período e filtros específicos da tabela)
+    const loadTransactions = useCallback(async () => {
+        setTxLoading(true);
+        try {
+            const result = await api.getTransactions({
+                dataInicio: dateFilters.dataInicio,
+                dataFim: dateFilters.dataFim,
+                categoria: txFilters.categoria || (selectedCategories.length === 1 ? selectedCategories[0] : undefined),
+                busca: txFilters.busca || undefined,
+                ordem: txFilters.ordem,
+                page: txFilters.page,
+                limit: txFilters.limit,
+            });
+            setTxData(result);
+        } catch (e) {
+            console.error('Erro ao carregar transações da tabela:', e);
+        }
+        setTxLoading(false);
+    }, [dateFilters, txFilters, selectedCategories]);
+
     useEffect(() => {
         const refreshAll = () => {
             loadDashboardData();
@@ -187,6 +236,21 @@ export default function DashboardPage() {
             window.removeEventListener('unclassified-count-changed', refreshAll);
         };
     }, [loadDashboardData, loadTransactions]);
+
+    useEffect(() => {
+        loadDashboardData();
+    }, [loadDashboardData]);
+
+    useEffect(() => {
+        loadTransactions();
+    }, [loadTransactions]);
+
+    // Carrega categorias distintas para o seletor
+    useEffect(() => {
+        api.getDistinctCategories()
+            .then(setCategoriesList)
+            .catch(() => {});
+    }, []);
 
     const getSubcategoryOptions = (catName) => {
         const cat = allCategories.find(c => c.nome === catName);
@@ -222,80 +286,6 @@ export default function DashboardPage() {
             alert('Erro ao salvar transação: ' + e.message);
         }
     };
-
-    // Estados da Tabela de Transações abaixo dos gráficos
-    const [txData, setTxData] = useState({ items: [], total: 0, page: 1, totalPages: 0 });
-    const [txLoading, setTxLoading] = useState(true);
-    const [txFilters, setTxFilters] = useState({
-        busca: '',
-        categoria: '',
-        ordem: 'DESC',
-        orderBy: 'data',
-        page: 1,
-        limit: 50,
-    });
-
-    // Carrega categorias distintas para o seletor
-    useEffect(() => {
-        api.getDistinctCategories()
-            .then(setCategoriesList)
-            .catch(() => {});
-    }, []);
-
-    // Carrega Resumo e Linha do Tempo
-    const loadDashboardData = useCallback(async () => {
-        setLoadingSummary(true);
-        try {
-            const categoriasParam = selectedCategories.length > 0 ? selectedCategories.join(',') : undefined;
-            const [s, t] = await Promise.all([
-                api.getDashboardSummary({ ...dateFilters, categorias: categoriasParam }),
-                api.getDashboardTimeline({ ...getLast12MonthsDates(), categorias: categoriasParam }),
-            ]);
-            setSummary(s);
-            setTimeline(t);
-        } catch (e) {
-            console.error('Erro ao carregar dados do dashboard:', e);
-        }
-        setLoadingSummary(false);
-    }, [dateFilters, selectedCategories]);
-
-    useEffect(() => {
-        loadDashboardData();
-    }, [loadDashboardData]);
-
-    // Ouvir atualizações de classificação e recarregar o dashboard em tempo real
-    useEffect(() => {
-        const handleUpdate = () => {
-            loadDashboardData();
-            api.getDistinctCategories().then(setCategoriesList).catch(() => {});
-        };
-        window.addEventListener('unclassified-count-changed', handleUpdate);
-        return () => window.removeEventListener('unclassified-count-changed', handleUpdate);
-    }, [loadDashboardData]);
-
-    // Carrega Tabela de Transações (com base no período e filtros específicos da tabela)
-    const loadTransactions = useCallback(async () => {
-        setTxLoading(true);
-        try {
-            const result = await api.getTransactions({
-                dataInicio: dateFilters.dataInicio,
-                dataFim: dateFilters.dataFim,
-                categoria: txFilters.categoria || (selectedCategories.length === 1 ? selectedCategories[0] : undefined),
-                busca: txFilters.busca || undefined,
-                ordem: txFilters.ordem,
-                page: txFilters.page,
-                limit: txFilters.limit,
-            });
-            setTxData(result);
-        } catch (e) {
-            console.error('Erro ao carregar transações da tabela:', e);
-        }
-        setTxLoading(false);
-    }, [dateFilters, txFilters, selectedCategories]);
-
-    useEffect(() => {
-        loadTransactions();
-    }, [loadTransactions]);
 
     // Handlers para botões de atalho de período
     const applyPeriodPreset = (presetName, datesFn) => {

@@ -40,22 +40,7 @@ export default function RulesPage() {
     const [ruleSearch, setRuleSearch] = useState('');
     const [ruleSortBy, setRuleSortBy] = useState('priority'); // 'priority' | 'category'
 
-    useEffect(() => {
-        loadRules();
-        api.getCategoriesFlat().then(cats => {
-            const sorted = cats
-                .filter(c => !c.parent_id)
-                .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-            setAllCategories(sorted);
-        }).catch(() => { });
-    }, []);
-
-    const getSubcategoryOptions = (catName) => {
-        const cat = allCategories.find(c => c.nome === catName);
-        return cat?.children || [];
-    };
-
-    const loadRules = async () => {
+    const loadRules = useCallback(async () => {
         setLoading(true);
         try {
             const data = await api.getRules();
@@ -64,6 +49,21 @@ export default function RulesPage() {
             console.error(e);
         }
         setLoading(false);
+    }, []);
+
+    useEffect(() => {
+        loadRules();
+        api.getCategoriesFlat().then(cats => {
+            const sorted = cats
+                .filter(c => !c.parent_id)
+                .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+            setAllCategories(sorted);
+        }).catch(() => { });
+    }, [loadRules]);
+
+    const getSubcategoryOptions = (catName) => {
+        const cat = allCategories.find(c => c.nome === catName);
+        return cat?.children || [];
     };
 
     const [formError, setFormError] = useState('');

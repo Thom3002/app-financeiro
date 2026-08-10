@@ -73,16 +73,20 @@ export default function TransactionsPage() {
         setLoading(false);
     }, [filters]);
 
+    const refreshCategories = useCallback(() => {
+        api.getDistinctCategories().then(cats => setCategories(cats.sort((a, b) => a.localeCompare(b, 'pt-BR')))).catch(() => { });
+        api.getCategoriesFlat().then(cats => {
+            setAllCategories(cats.filter(c => !c.parent_id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
+        }).catch(() => { });
+    }, []);
+
     useEffect(() => {
         loadData();
     }, [loadData]);
 
     useEffect(() => {
-        api.getDistinctCategories().then(cats => setCategories(cats.sort((a, b) => a.localeCompare(b, 'pt-BR')))).catch(() => { });
         api.getDistinctBanks().then(setBanks).catch(() => { });
-        api.getCategoriesFlat().then(cats => {
-            setAllCategories(cats.filter(c => !c.parent_id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
-        }).catch(() => { });
+        refreshCategories();
 
         const handleUnclassifiedChanged = () => {
             loadData();
@@ -93,14 +97,7 @@ export default function TransactionsPage() {
         return () => {
             window.removeEventListener('unclassified-count-changed', handleUnclassifiedChanged);
         };
-    }, [loadData]);
-
-    const refreshCategories = () => {
-        api.getDistinctCategories().then(cats => setCategories(cats.sort((a, b) => a.localeCompare(b, 'pt-BR')))).catch(() => { });
-        api.getCategoriesFlat().then(cats => {
-            setAllCategories(cats.filter(c => !c.parent_id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
-        }).catch(() => { });
-    };
+    }, [loadData, refreshCategories]);
 
     const getSubcategoryOptions = (catName) => {
         const cat = allCategories.find(c => c.nome === catName);
