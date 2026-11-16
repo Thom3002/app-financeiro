@@ -42,6 +42,12 @@ function stripBankNoise(text: string): string {
     /\brever\s+par\s+deb\s+cartao\b/gi,
     /\bpix\s+enviado\s+para\b/gi,
     /\bpix\s+recebido\s+de\b/gi,
+    /\bpix\s*-\s*enviado\b/gi,
+    /\bpix\s*-\s*recebido\b/gi,
+    /\bpix\s+enviado\b/gi,
+    /\bpix\s+recebido\b/gi,
+    /\bpix\s+agendado\b/gi,
+    /\btransfe\s+pix\b/gi,
     /\btransf\s+enviada\s+pix\b/gi,
     /\btransf\s+recebida\s+pix\b/gi,
     /\btransf\s+enviada\b/gi,
@@ -49,10 +55,21 @@ function stripBankNoise(text: string): string {
     /\btransferencia\s+enviada\b/gi,
     /\btransferencia\s+recebida\b/gi,
     /\bpagamento\s+de\s+boleto\b/gi,
+    /\bpagto\s+cobranca\b/gi,
+    /\btransf\s+autoriz\b/gi,
+    /\bted\s+dif\.?\s*titul\b/gi,
+    /\bted\s+transf\.?\s*eletr\.?\s*disponiv\b/gi,
     /\bpagto\s+elet\b/gi,
     /\bcompra\s+no\s+debito\b/gi,
     /\bcompra\s+no\s+credito\b/gi,
+    /\bcompra\s+com\s+cartao\b/gi,
     /\bcompra\s+cartao\b/gi,
+    /\bcompra\s+visa\b/gi,
+    /\bvisa\s+electron\b/gi,
+    /\bcomp\s+debit\s+app\b/gi,
+    /\b(?:rem|des|dest|remet)\.?\s*:\s*/gi,
+    /\b(?:dest|remet)\.\s*/gi,
+    /\bparc\b/gi,
   ];
 
   for (const regex of noiseRegexes) {
@@ -69,6 +86,7 @@ function normalizeForGrouping(text: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[0-9]/g, '') // remove numbers
+    .replace(/^[^a-z]+|[^a-z]+$/g, '') // remove orphan punctuation at edges (e.g. "/ :" from dates/times)
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -136,8 +154,23 @@ export class ClassificationService {
       { key: string; transactions: Transaction[] }
     >();
 
+    const getRelevantText = (tx: Transaction): string => {
+      if (tx.account_type === 'CREDIT_CARD' || tx.account_type === 'CREDIT') {
+        return tx.titulo || tx.descricao || '';
+      }
+      const bancoUpper = (tx.banco || '').toUpperCase();
+      if (
+        (bancoUpper === 'BRADESCO' || bancoUpper === 'BB' || bancoUpper === 'BANCO DO BRASIL') &&
+        tx.descricao &&
+        tx.descricao.trim() !== ''
+      ) {
+        return tx.descricao;
+      }
+      return tx.titulo || tx.descricao || '';
+    };
+
     for (const tx of trulyUnclassified) {
-      const key = normalizeForGrouping(tx.titulo || tx.descricao || '');
+      const key = normalizeForGrouping(getRelevantText(tx));
       if (!key) continue;
 
       if (!groupsMap.has(key)) {
@@ -151,7 +184,7 @@ export class ClassificationService {
     for (const group of groupsMap.values()) {
       if (group.transactions.length < 2) continue;
 
-      const texts = group.transactions.map((t) => t.titulo || t.descricao || '');
+      const texts = group.transactions.map((t) => getRelevantText(t));
       const keyword = extractKeyword(texts) || group.key;
 
       const totalValue = group.transactions.reduce(

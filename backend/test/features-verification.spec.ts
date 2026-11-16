@@ -365,9 +365,44 @@ Data;Histórico;Docto.;Crédito (R$);Débito (R$);Saldo (R$);
 
       expect(txStore.length).toBe(1);
       expect(txStore[0].categoria).toBe('Assinaturas');
+      expect(txStore[0].source).toBe('CSV');
       expect(txStore[0].is_custo_fixo).toBe(true);
       expect(txStore[0].ignorar_dashboard).toBe(true);
       expect(txStore[0].ignore_reason).toContain('Regra de classificação');
+    });
+
+    it('Deve importar extratos do Banco do Brasil (Layouts v1, v2 e Ourocard TXT) com deduplicação e parcelas', async () => {
+      await rulesService.create({
+        regex: 'guilherme.*joia',
+        categoria: 'Acordos',
+        set_custo_fixo: true,
+      });
+
+      const bbCsvV1 = `"Data","Dependencia Origem","Histórico","Data do Balancete","Número do documento","Valor",
+"15/06/2026","","Pix Agendado - 15/06 GUILHERME JOIA BARCELOS  001/007","","61501","-1537.50",
+"15/06/2026","","BB Rende Fácil - Rende Facil","","9903","1537.50",
+`;
+
+      const res1 = await importService.execute('BB', bbCsvV1, 'BBextrato (6).csv');
+      expect(res1.success).toBe(true);
+      expect(res1.log?.novas).toBe(1);
+      expect(txStore.length).toBe(1);
+      expect(txStore[0].banco).toBe('BB');
+      expect(txStore[0].source).toBe('CSV');
+      expect(txStore[0].categoria).toBe('Acordos');
+      expect(txStore[0].is_custo_fixo).toBe(true);
+      expect(txStore[0].parcela_atual).toBe(1);
+      expect(txStore[0].total_parcelas).toBe(7);
+
+      // Reimportar a mesma transação no Layout v2 deve ser detectada como duplicada
+      const bbCsvV2 = `"Data","Lançamento","Detalhes","N° documento","Valor","Tipo Lançamento"
+"15/06/2026","Pix Agendado","15/06 GUILHERME JOIA BARCELOS  001/007","61501","-1.537,50","Saída"
+`;
+      const res2 = await importService.execute('BB', bbCsvV2, 'extrato_062026.csv');
+      expect(res2.success).toBe(true);
+      expect(res2.log?.novas).toBe(0);
+      expect(res2.log?.duplicadas).toBe(1);
+      expect(txStore.length).toBe(1);
     });
   });
 

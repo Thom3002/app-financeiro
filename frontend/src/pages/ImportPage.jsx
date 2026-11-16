@@ -9,6 +9,7 @@ const STEPS = ['Banco', 'Upload', 'Preview', 'Resultado'];
 const DEFAULT_BANKS = [
     { id: 'C6', nome: 'C6 Bank', descricao: 'Extrato de conta corrente C6 Bank (CSV)' },
     { id: 'BRADESCO', nome: 'Bradesco', descricao: 'Extrato Bradesco - Conta Corrente ou Cartão de Crédito (CSV)' },
+    { id: 'BB', nome: 'Banco do Brasil', descricao: 'Extrato Banco do Brasil - Conta Corrente (CSV) ou Cartão Ourocard (TXT)' },
 ];
 
 export default function ImportPage() {
@@ -45,6 +46,8 @@ export default function ImportPage() {
             if (config.hasCredentials) {
                 const conns = await api.getPluggyConnections();
                 setConnections(conns);
+            } else {
+                setMainTab('csv-file');
             }
         } catch (err) {
             console.error('Erro ao carregar dados do Pluggy:', err);

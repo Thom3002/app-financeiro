@@ -1,5 +1,6 @@
 import { parseC6Csv } from './c6.parser';
 import { parseBradescoCsv } from './bradesco.parser';
+import { parseBBCsv } from './bb.parser';
 
 export interface ParsedTransaction {
   id: string;
@@ -9,6 +10,10 @@ export interface ParsedTransaction {
   valor: number;
   banco: string;
   account_type: 'CHECKING' | 'CREDIT_CARD';
+  parcela_atual?: number | null;
+  total_parcelas?: number | null;
+  ignorar_dashboard?: boolean;
+  ignore_reason?: string | null;
 }
 
 export interface ParserResult {
@@ -33,11 +38,19 @@ const SUPPORTED_BANKS: BankInfo[] = [
     nome: 'Bradesco',
     descricao: 'Extrato Bradesco - Conta Corrente ou Cartão de Crédito (CSV)',
   },
+  {
+    id: 'BB',
+    nome: 'Banco do Brasil',
+    descricao:
+      'Extrato Banco do Brasil - Conta Corrente (CSV) ou Cartão Ourocard (TXT)',
+  },
 ];
 
 const PARSERS: Record<string, (csv: string) => ParserResult> = {
   C6: parseC6Csv,
   BRADESCO: parseBradescoCsv,
+  BB: parseBBCsv,
+  'BANCO DO BRASIL': parseBBCsv,
 };
 
 export function getSupportedBanks(): BankInfo[] {

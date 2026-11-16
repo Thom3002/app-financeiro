@@ -33,10 +33,17 @@ function parseBrlNumber(valStr: string): number {
   return parseFloat(normalized) || 0;
 }
 
-function getTransactionYear(txMonth: number, statementDate: Date): number {
+function getTransactionYear(
+  txMonth: number,
+  statementDate: Date,
+  parcelaAtual: number | null = null,
+): number {
   const statementMonth = statementDate.getMonth() + 1; // 1-12
   const statementYear = statementDate.getFullYear();
-  if (txMonth > statementMonth) {
+  if (
+    txMonth > statementMonth ||
+    (parcelaAtual !== null && parcelaAtual > 1 && txMonth === statementMonth)
+  ) {
     return statementYear - 1;
   }
   return statementYear;
@@ -80,17 +87,39 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
       }
     }
 
+    // Se houver linha de SALDO ANTERIOR (ex: "01/09;SALDO ANTERIOR"), o mês dela indica o mês de fechamento da fatura
+    for (const line of lines) {
+      const saldoMatch = line.trim().match(/^(\d{2})\/(\d{2});\s*SALDO ANTERIOR/i);
+      if (saldoMatch) {
+        const saldoMonth = parseInt(saldoMatch[2], 10);
+        const exportMonth = statementDate.getMonth() + 1;
+        const exportYear = statementDate.getFullYear();
+        const invoiceYear = saldoMonth > exportMonth ? exportYear - 1 : exportYear;
+        statementDate = new Date(invoiceYear, saldoMonth - 1, 28);
+        break;
+      }
+    }
+
     let currentCardInfo = '';
     const parsedTxList: {
       data: string;
       titulo: string;
       descricao: string;
       valor: number;
+      parcela_atual?: number | null;
+      total_parcelas?: number | null;
+      ignorar_dashboard?: boolean;
+      ignore_reason?: string | null;
     }[] = [];
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
+
+      // Para ao chegar no resumo final da fatura
+      if (/^total da fatura em real/i.test(line) || /^resumo das despesas/i.test(line)) {
+        break;
+      }
 
       // Check for cardholder / card info header
       // Format: MAEVE B MELLO ;;; 4961
@@ -106,7 +135,13 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
         // Check if dateStr matches DD/MM format (e.g., 19/04)
         if (/^\d{2}\/\d{2}$/.test(dateStr)) {
           const title = parts[1].trim();
-          if (title.toUpperCase() === 'SALDO ANTERIOR' || title.toLowerCase().startsWith('total')) {
+          const normTitle = normalizeText(title);
+          if (
+            normTitle === 'saldo anterior' ||
+            normTitle.startsWith('pagto. por deb em c/c') ||
+            normTitle.startsWith('pagto por deb em c/c') ||
+            normTitle.startsWith('total')
+          ) {
             continue;
           }
 
@@ -116,18 +151,35 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
           // We invert this: purchases become negative (expense), credits become positive.
           const valor = -parsedVal;
 
+          let parcela_atual: number | null = null;
+          let total_parcelas: number | null = null;
+          const parcMatch = title.match(/\s+(\d{1,2})\/(\d{1,2})$/);
+          if (parcMatch) {
+            const p1 = parseInt(parcMatch[1], 10);
+            const p2 = parseInt(parcMatch[2], 10);
+            if (p1 >= 1 && p2 >= p1 && p2 <= 60) {
+              parcela_atual = p1;
+              total_parcelas = p2;
+            }
+          }
+
           const [dd, mm] = dateStr.split('/');
           const txMonth = parseInt(mm, 10);
-          const txDay = parseInt(dd, 10);
-          const txYear = getTransactionYear(txMonth, statementDate);
+          const txYear = getTransactionYear(txMonth, statementDate, parcela_atual);
 
           const isoDate = `${txYear}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+
+          const isAntecipado = normTitle.startsWith('pagto antecipado');
 
           parsedTxList.push({
             data: isoDate,
             titulo: title,
             descricao: currentCardInfo,
             valor: Math.round(valor * 100) / 100,
+            parcela_atual,
+            total_parcelas,
+            ignorar_dashboard: isAntecipado ? true : undefined,
+            ignore_reason: isAntecipado ? 'Pagamento antecipado de fatura' : undefined,
           });
         }
       }
@@ -149,7 +201,7 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
         occurrence
       );
 
-      transactions.push({
+      const item: ParsedTransaction = {
         id,
         data: tx.data,
         titulo: tx.titulo,
@@ -157,7 +209,16 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
         valor: tx.valor,
         banco: 'BRADESCO',
         account_type: 'CREDIT_CARD',
-      });
+      };
+      if (tx.parcela_atual && tx.total_parcelas) {
+        item.parcela_atual = tx.parcela_atual;
+        item.total_parcelas = tx.total_parcelas;
+      }
+      if (tx.ignorar_dashboard) {
+        item.ignorar_dashboard = true;
+        item.ignore_reason = tx.ignore_reason;
+      }
+      transactions.push(item);
     }
 
   } else {
@@ -174,6 +235,15 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
+
+      const normLine = normalizeText(line);
+      // Interrompe antes da seção de Lançamentos Futuros ou rodapé final do extrato
+      if (
+        normLine.startsWith('lancamentos futuros') ||
+        normLine.startsWith('os dados acima tem como base')
+      ) {
+        break;
+      }
 
       const parts = line.split(';');
       const dateStr = parts[0] ? parts[0].trim() : '';

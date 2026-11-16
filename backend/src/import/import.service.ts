@@ -64,14 +64,21 @@ export class ImportService {
       tx.valor = t.valor;
       tx.banco = t.banco;
       tx.account_type = t.account_type;
+      tx.source = 'CSV';
+      tx.parcela_atual = t.parcela_atual ?? null;
+      tx.total_parcelas = t.total_parcelas ?? null;
       tx.categoria = classification.categoria;
       tx.subcategoria = classification.subcategoria;
       tx.matched_rule_id = classification.matched_rule_id;
       tx.is_manual = false;
       tx.is_custo_fixo = classification.set_custo_fixo || false;
-      tx.ignorar_dashboard = classification.ignorar_dashboard || false;
+      tx.ignorar_dashboard =
+        classification.ignorar_dashboard || t.ignorar_dashboard || false;
       if (classification.ignorar_dashboard) {
         tx.ignore_reason = `Regra de classificação (${classification.categoria})`;
+      } else if (t.ignorar_dashboard) {
+        tx.ignore_reason =
+          t.ignore_reason || 'Pagamento de fatura (evita contagem dupla)';
       }
       return tx;
     });

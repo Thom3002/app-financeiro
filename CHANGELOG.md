@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.12] - 2026-11-16
+
+### Added
+- **Suporte ao Banco do Brasil (Conta Corrente e Cartão Ourocard)**:
+  - Novo parser unificado (`bb.parser.ts`) com detecção automática entre Conta Corrente (CSV Layout v1 com `Histórico` e Layout v2 com `Lançamento` + `Detalhes`) e Cartão de Crédito Ourocard (TXT SISBB, faturas fechadas e fatura aberta).
+  - Filtragem automática de linhas de saldo (`Saldo Anterior`, `Saldo do dia`, `S A L D O`), movimentações automáticas `BB Rende Fácil` (doc `9903`) e pagamentos de fatura anterior (`PGTO DEBITO CONTA`).
+  - Extração automática de parcelas (`PARC XX/YY` e `001/007`) e normalização de IDs determinísticos entre os Layouts v1 e v2.
+
+### Fixed
+- **Aprimoramento do Parser Bradesco e Modo Sem Pluggy (CSV)**:
+  - Interrupção da leitura de Conta Corrente Bradesco antes do bloco `Lançamentos Futuros`, evitando importação prematura de agendamentos.
+  - Inferência precisa do mês/ano de fechamento em faturas de Cartão Bradesco (`SALDO ANTERIOR` + número da parcela `X/Y`) e exclusão de `PAGTO. POR DEB EM C/C` para evitar receitas fantasmas.
+  - Agrupamento inteligente na aba **Classificar** (`ClassificationService.getSuggestions`) priorizando o favorecido/fornecedor (`descricao`) na Conta Corrente e o estabelecimento (`titulo`) no Cartão de Crédito.
+  - Correção da flag `source = 'CSV'`, badge `"Crédito"` para `CREDIT_CARD`, detecção do banner de pagamento de fatura (`Gasto c Credito` / `Pagto cartão crédito`) e abertura automática da aba CSV quando o Pluggy está desativado.
+
 ## [1.1.11] - 2026-08-09
 
 ### Fixed

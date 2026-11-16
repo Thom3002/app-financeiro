@@ -5,10 +5,14 @@ import ConflictPanel from '../components/ConflictPanel';
 import { useVisibility } from '../contexts/VisibilityContext';
 
 function extractKeywordFromTx(tx) {
-    const text = (tx.descricao || tx.titulo || '').toLowerCase();
-    const noise = /\b(debito de cartao|rever par deb cartao|pix recebido de|pix enviado para|transf enviada pix|bra)\b/gi;
-    let cleaned = text.replace(noise, '').replace(/\s+/g, ' ').trim();
-    const words = cleaned.split(' ').filter(w => w.length > 2).slice(0, 3);
+    const isCredit = tx.account_type === 'CREDIT' || tx.account_type === 'CREDIT_CARD';
+    const rawText = isCredit
+        ? (tx.titulo || tx.descricao || '')
+        : (tx.descricao || tx.titulo || '');
+    const text = rawText.toLowerCase();
+    const noise = /\b(debito de cartao|rever par deb cartao|pix recebido de|pix enviado para|pix - enviado|pix - recebido|pix enviado|pix recebido|pix agendado|transfe pix|transf enviada pix|pagto cobranca|transf autoriz|ted dif\.? titul|compra com cartao|rem:|des:|dest\.|remet\.|parc|bra)\b/gi;
+    let cleaned = text.replace(noise, '').replace(/\b\d{2}\/\d{2}(?:\/\d{2,4})?\b/g, '').replace(/\b\d{2}:\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
+    const words = cleaned.split(' ').filter(w => w.length > 2 && !/^\d+$/.test(w)).slice(0, 3);
     return words.join(' ');
 }
 
@@ -280,7 +284,15 @@ export default function TransactionsPage() {
             {/* Modal de Edição / Classificação Detalhada */}
             {editingTx && (() => {
                 const fullText = ((editingTx.titulo || '') + ' ' + (editingTx.descricao || '')).toUpperCase();
-                const isFatura = fullText.includes('FATURA') || fullText.includes('PAGTO FATURA') || fullText.includes('PAGAMENTO FATURA');
+                const isFatura =
+                    fullText.includes('FATURA') ||
+                    fullText.includes('PAGTO FATURA') ||
+                    fullText.includes('PAGAMENTO FATURA') ||
+                    fullText.includes('GASTO C CREDITO') ||
+                    fullText.includes('GASTOS CARTAO DE CREDITO') ||
+                    fullText.includes('PAGTO CARTAO CREDITO') ||
+                    fullText.includes('PAGTO CARTÃO CRÉDITO') ||
+                    fullText.includes('PAGTO ANTECIPADO');
                 const isUnclassified = !editingTx.categoria || editingTx.categoria === 'Não classificado';
 
                 return (
@@ -569,7 +581,7 @@ export default function TransactionsPage() {
                             </thead>
                             <tbody>
                                 {data.items.map((tx) => {
-                                    const isCredit = tx.account_type === 'CREDIT';
+                                    const isCredit = tx.account_type === 'CREDIT' || tx.account_type === 'CREDIT_CARD';
                                     const hasInstallments = tx.parcela_atual && tx.total_parcelas;
                                     const isIgnored = !!tx.ignorar_dashboard;
                                     const isUnclassified = !tx.categoria || tx.categoria === 'Não classificado';
