@@ -4,6 +4,7 @@ import { parseBradescoCsv } from '../src/services/parsers/bradesco.parser';
 import { parseC6Csv } from '../src/services/parsers/c6.parser';
 import { parseBBCsv } from '../src/services/parsers/bb.parser';
 import { parseCSV, getSupportedBanks } from '../src/services/parsers/parser.registry';
+import { isPdfBuffer, extractPdfText } from '../src/services/parsers/pdf.extractor';
 
 function readLatin1OrUtf8(filePath: string): string {
   const buf = fs.readFileSync(filePath);
@@ -535,6 +536,59 @@ const hasExtratosVo = fs.existsSync(extratosVoDir);
       const v2Ids = new Set(resAugV2.transactions.map((t) => t.id));
       for (const tx of resAugV1.transactions) {
         expect(v2Ids.has(tx.id)).toBe(true);
+      }
+    });
+
+    it('deve reconciliar exatamente as faturas PDF do Cartão BB Ourocard (Jun, Jul e Ago/26)', () => {
+      const bbPdfDir = path.join(extratosVoDir, 'extracted_bbextratos');
+      const bbPdfs: { file: string; expectedTotal: number }[] = [
+        { file: 'OUROCARD_VISA_INFINITE-Jun_26 (1).pdf', expectedTotal: -3797.60 },
+        { file: 'OUROCARD_VISA_INFINITE-Jul_26.pdf', expectedTotal: -1672.02 },
+        { file: 'OUROCARD_VISA_INFINITE-Ago_26.pdf', expectedTotal: -1434.40 },
+      ];
+
+      for (const inv of bbPdfs) {
+        const buf = fs.readFileSync(path.join(bbPdfDir, inv.file));
+        expect(isPdfBuffer(buf)).toBe(true);
+        const extracted = extractPdfText(buf, 'BB');
+        const res = parseBBCsv(extracted);
+        expect(res.errors).toHaveLength(0);
+        const sum =
+          Math.round(
+            res.transactions.reduce((acc, t) => acc + t.valor, 0) * 100
+          ) / 100;
+        expect(sum).toBe(inv.expectedTotal);
+      }
+
+      // PDF sem texto selecionável (Microsoft Print To PDF) deve retornar erro amigável
+      const appBuf = fs.readFileSync(path.join(bbPdfDir, 'BB-aplicacao agosto.pdf'));
+      expect(isPdfBuffer(appBuf)).toBe(true);
+      const appText = extractPdfText(appBuf, 'BB');
+      expect(appText).toBe('');
+      const appRes = parseBBCsv('__PDF_NO_TEXT__');
+      expect(appRes.transactions).toHaveLength(0);
+      expect(appRes.errors[0]).toContain('não possui texto selecionável');
+    });
+
+    it('deve reconciliar exatamente as faturas PDF do Cartão Bradesco', () => {
+      const bradPdfs: { file: string; expectedTotal: number }[] = [
+        { file: 'fatura_bradesco.pdf', expectedTotal: -5328.10 },
+        { file: 'fatura_bradesco (1).pdf', expectedTotal: -6798.69 },
+        { file: 'fatura_bradesco (3).pdf', expectedTotal: -11979.82 },
+        { file: 'fatura_bradesco (4).pdf', expectedTotal: -11317.02 },
+      ];
+
+      for (const inv of bradPdfs) {
+        const buf = fs.readFileSync(path.join(bradescoDir, inv.file));
+        expect(isPdfBuffer(buf)).toBe(true);
+        const extracted = extractPdfText(buf, 'BRADESCO');
+        const res = parseBradescoCsv(extracted);
+        expect(res.errors).toHaveLength(0);
+        const sum =
+          Math.round(
+            res.transactions.reduce((acc, t) => acc + t.valor, 0) * 100
+          ) / 100;
+        expect(sum).toBe(inv.expectedTotal);
       }
     });
   }

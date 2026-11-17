@@ -49,7 +49,183 @@ function getTransactionYear(
   return statementYear;
 }
 
+function parseBradescoPdfText(content: string): ParserResult {
+  const transactions: ParsedTransaction[] = [];
+  const errors: string[] = [];
+  const lines = content.split('\n');
+
+  let statementDate = new Date();
+  let defaultHolder = '';
+  let defaultCardLast4 = '';
+
+  // Na página 1, extrai vencimento (DD / MM / YYYY) e titular
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const vencMatch = line.match(/^(\d{2})\s*\/\s*(\d{2})\s*\/\s*(\d{4})$/);
+    if (vencMatch) {
+      statementDate = new Date(
+        parseInt(vencMatch[3], 10),
+        parseInt(vencMatch[2], 10) - 1,
+        parseInt(vencMatch[1], 10),
+      );
+      break;
+    }
+    const cardNumMatch = line.match(
+      /^N[úu]mero do Cart[ãa]o\s+\d{4}\s+XXXX\s+XXXX\s+(\d{4})/i,
+    );
+    if (cardNumMatch) {
+      defaultCardLast4 = cardNumMatch[1];
+    }
+  }
+
+  let currentCardInfo = defaultCardLast4 ? `Final ${defaultCardLast4}` : '';
+  let pendingHolder = '';
+
+  const parsedTxList: {
+    data: string;
+    titulo: string;
+    descricao: string;
+    valor: number;
+    parcela_atual?: number | null;
+    total_parcelas?: number | null;
+    ignorar_dashboard?: boolean;
+    ignore_reason?: string | null;
+  }[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (/^Total da fatura em real/i.test(line)) {
+      break;
+    }
+
+    // Cabeçalho de titular + cartão no PDF: linha com nome em maiúsculas seguida de "Cartão 4066 XXXX XXXX 5916"
+    const cartaoLineMatch = line.match(
+      /^Cart[ãa]o\s+\d{4}\s+XXXX\s+XXXX\s+(\d{4})$/i,
+    );
+    if (cartaoLineMatch) {
+      const holder = pendingHolder || defaultHolder;
+      currentCardInfo = holder
+        ? `${holder} (Final ${cartaoLineMatch[1]})`
+        : `Final ${cartaoLineMatch[1]}`;
+      if (!defaultHolder && holder) defaultHolder = holder;
+      pendingHolder = '';
+      continue;
+    }
+
+    if (
+      /^[A-ZÀ-Ú][A-ZÀ-Ú\s.]{3,}$/.test(line) &&
+      !line.includes('FATURA') &&
+      !line.includes('CAMPINAS') &&
+      !line.includes('VISA') &&
+      !line.includes('TOTAL') &&
+      !line.includes('PAGTO') &&
+      !line.includes('BRADESCO')
+    ) {
+      pendingHolder = line;
+    }
+
+    const txMatch = line.match(
+      /^(\d{2})\s*\/\s*(\d{2})\s+(.+?)\s+([\d.,]+)(\s*-)?$/,
+    );
+    if (!txMatch) continue;
+
+    const [, dd, mm, rawTitle, valStr, minusFlag] = txMatch;
+    const title = rawTitle.replace(/\s+/g, ' ').trim();
+    const normTitle = normalizeText(title);
+
+    if (
+      normTitle === 'saldo anterior' ||
+      normTitle.startsWith('pagto. por deb em c/c') ||
+      normTitle.startsWith('pagto por deb em c/c') ||
+      normTitle.startsWith('total')
+    ) {
+      continue;
+    }
+
+    let parsedVal = parseBrlNumber(valStr);
+    if (minusFlag) parsedVal = -parsedVal;
+    const valor = -parsedVal;
+
+    let parcela_atual: number | null = null;
+    let total_parcelas: number | null = null;
+    const parcMatch = title.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+    if (parcMatch) {
+      const p1 = parseInt(parcMatch[1], 10);
+      const p2 = parseInt(parcMatch[2], 10);
+      if (p1 >= 1 && p2 >= p1 && p2 <= 60) {
+        parcela_atual = p1;
+        total_parcelas = p2;
+      }
+    }
+
+    const txMonth = parseInt(mm, 10);
+    const txYear = getTransactionYear(txMonth, statementDate, parcela_atual);
+    const isoDate = `${txYear}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    const isAntecipado = normTitle.startsWith('pagto antecipado');
+
+    parsedTxList.push({
+      data: isoDate,
+      titulo: title,
+      descricao: currentCardInfo,
+      valor: Math.round(valor * 100) / 100,
+      parcela_atual,
+      total_parcelas,
+      ignorar_dashboard: isAntecipado ? true : undefined,
+      ignore_reason: isAntecipado ? 'Pagamento antecipado de fatura' : undefined,
+    });
+  }
+
+  const occurrenceMap = new Map<string, number>();
+  for (const tx of parsedTxList) {
+    const baseKey = `${tx.data}|${tx.valor.toFixed(2)}|${normalizeText(tx.titulo + ' ' + tx.descricao)}|BRADESCO|CREDIT_CARD`;
+    const occurrence = occurrenceMap.get(baseKey) || 0;
+    occurrenceMap.set(baseKey, occurrence + 1);
+
+    const id = generateDeterministicId(
+      tx.data,
+      tx.valor,
+      tx.titulo,
+      tx.descricao,
+      'BRADESCO',
+      'CREDIT_CARD',
+      occurrence,
+    );
+
+    const item: ParsedTransaction = {
+      id,
+      data: tx.data,
+      titulo: tx.titulo,
+      descricao: tx.descricao,
+      valor: tx.valor,
+      banco: 'BRADESCO',
+      account_type: 'CREDIT_CARD',
+    };
+    if (tx.parcela_atual && tx.total_parcelas) {
+      item.parcela_atual = tx.parcela_atual;
+      item.total_parcelas = tx.total_parcelas;
+    }
+    if (tx.ignorar_dashboard) {
+      item.ignorar_dashboard = true;
+      item.ignore_reason = tx.ignore_reason;
+    }
+    transactions.push(item);
+  }
+
+  return { transactions, errors };
+}
+
 export function parseBradescoCsv(csvContent: string): ParserResult {
+  if (csvContent === '__PDF_NO_TEXT__') {
+    return {
+      transactions: [],
+      errors: [
+        'Este PDF não possui texto selecionável (foi gerado como imagem/vetor). Exporte o extrato em CSV.',
+      ],
+    };
+  }
+
   const transactions: ParsedTransaction[] = [];
   const errors: string[] = [];
 
@@ -59,6 +235,14 @@ export function parseBradescoCsv(csvContent: string): ParserResult {
 
   // Detect type based on content
   const normalizedContent = normalizeText(csvContent);
+
+  if (
+    normalizedContent.includes('fatura mensal') &&
+    normalizedContent.includes('historico de lancamentos')
+  ) {
+    return parseBradescoPdfText(content);
+  }
+
   const isCreditCard = /valor\(r\$\)/i.test(normalizedContent);
   const isChecking = /credito\s*\(r\$\)/i.test(normalizedContent) || /debito\s*\(r\$\)/i.test(normalizedContent);
 

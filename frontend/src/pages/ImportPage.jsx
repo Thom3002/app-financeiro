@@ -8,8 +8,8 @@ const STEPS = ['Banco', 'Upload', 'Preview', 'Resultado'];
 
 const DEFAULT_BANKS = [
     { id: 'C6', nome: 'C6 Bank', descricao: 'Extrato de conta corrente C6 Bank (CSV)' },
-    { id: 'BRADESCO', nome: 'Bradesco', descricao: 'Extrato Bradesco - Conta Corrente ou Cartão de Crédito (CSV)' },
-    { id: 'BB', nome: 'Banco do Brasil', descricao: 'Extrato Banco do Brasil - Conta Corrente (CSV) ou Cartão Ourocard (TXT)' },
+    { id: 'BRADESCO', nome: 'Bradesco', descricao: 'Extrato Bradesco - Conta Corrente (CSV) ou Cartão de Crédito (CSV / PDF)' },
+    { id: 'BB', nome: 'Banco do Brasil', descricao: 'Extrato Banco do Brasil - Conta Corrente (CSV) ou Cartão Ourocard (TXT / PDF)' },
 ];
 
 export default function ImportPage() {
@@ -229,7 +229,7 @@ export default function ImportPage() {
                         gap: '8px',
                     }}
                 >
-                    Importar Arquivo (CSV / OFX)
+                    Importar Arquivo (CSV / TXT / PDF)
                 </button>
             </div>
 
@@ -417,7 +417,7 @@ export default function ImportPage() {
                                 <input
                                     id="file-input"
                                     type="file"
-                                    accept=".csv,.CSV,.txt,.TXT,.ofx,.OFX,text/csv,text/plain"
+                                    accept=".csv,.CSV,.txt,.TXT,.pdf,.PDF,text/csv,text/plain,application/pdf"
                                     onChange={handleFileChange}
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ display: 'none' }}

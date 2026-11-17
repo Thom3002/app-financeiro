@@ -445,9 +445,179 @@ function parseBBCheckingCsv(content: string): ParserResult {
   return { transactions, errors };
 }
 
+function parseBBCreditCardPdfText(content: string): ParserResult {
+  const transactions: ParsedTransaction[] = [];
+  const errors: string[] = [];
+  const lines = content.split('\n');
+
+  let refDate = new Date();
+  let defaultCardDesc = 'Ourocard BB';
+
+  // Extrai data de fechamento / vencimento e cartão padrão do cabeçalho
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const closedMatch = line.match(
+      /Fatura fechada em\s*\|\s*(\d{2})\/(\d{2})\/(\d{4})/i,
+    );
+    if (closedMatch) {
+      refDate = new Date(
+        parseInt(closedMatch[3], 10),
+        parseInt(closedMatch[2], 10) - 1,
+        parseInt(closedMatch[1], 10),
+      );
+      break;
+    }
+    if (/^Vencimento$/i.test(line)) {
+      for (let j = i + 1; j <= i + 3 && j < lines.length; j++) {
+        const dm = lines[j].trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (dm) {
+          refDate = new Date(
+            parseInt(dm[3], 10),
+            parseInt(dm[2], 10) - 1,
+            parseInt(dm[1], 10),
+          );
+          break;
+        }
+      }
+    }
+  }
+
+  let currentCardDesc = defaultCardDesc;
+  let inLancamentos = false;
+
+  const parsedTxList: {
+    data: string;
+    titulo: string;
+    descricao: string;
+    valor: number;
+    parcela_atual?: number | null;
+    total_parcelas?: number | null;
+  }[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (/Lançamentos nesta fatura/i.test(line)) {
+      inLancamentos = true;
+      continue;
+    }
+
+    if (inLancamentos && /^(Subtotal|Total da Fatura)\b/i.test(line)) {
+      break;
+    }
+
+    if (!inLancamentos) continue;
+
+    // Cabeçalho de cartão: "Sonia Brito Mello  (Cartão 9324)"
+    const cardHeaderMatch = line.match(/^(.+?)\s+\(Cart[aã]o\s+(\d{4})\)$/i);
+    if (cardHeaderMatch) {
+      currentCardDesc = `${cardHeaderMatch[1].trim().toUpperCase()} (Final ${cardHeaderMatch[2]})`;
+      continue;
+    }
+
+    // Linha de lançamento: "10/06 | PGTO DEBITO CONTA ... | BR | R$ -3.797,60"
+    const txMatch = line.match(
+      /^(\d{2})\/(\d{2})\s*\|\s*(.+?)\s*\|\s*[A-Z]{2}\s*\|\s*R\$\s*(-?[\d.,]+)$/,
+    );
+    if (!txMatch) continue;
+
+    const [, dd, mm, rawDesc, rawValBrl] = txMatch;
+    const cleanedTitle = rawDesc.replace(/\s+/g, ' ').trim();
+    const normTitle = normalizeText(cleanedTitle);
+
+    if (
+      normTitle.startsWith('pgto debito conta') ||
+      normTitle.startsWith('pagto debito conta') ||
+      normTitle.startsWith('saldo fatura anterior')
+    ) {
+      continue;
+    }
+
+    const parsedVal = parseBBNumber(rawValBrl);
+    if (parsedVal === 0) continue;
+
+    const txMonth = parseInt(mm, 10);
+    const refMonth = refDate.getMonth() + 1;
+    const refYear = refDate.getFullYear();
+    const txYear = txMonth > refMonth ? refYear - 1 : refYear;
+    const isoDate = `${txYear}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+
+    const valor = Math.round(-parsedVal * 100) / 100;
+
+    let parcela_atual: number | null = null;
+    let total_parcelas: number | null = null;
+    const parcMatch = cleanedTitle.match(/\bPARC\s*(\d{1,2})\/(\d{1,2})\b/i);
+    if (parcMatch) {
+      parcela_atual = parseInt(parcMatch[1], 10);
+      total_parcelas = parseInt(parcMatch[2], 10);
+    }
+
+    parsedTxList.push({
+      data: isoDate,
+      titulo: cleanedTitle,
+      descricao: currentCardDesc,
+      valor,
+      parcela_atual,
+      total_parcelas,
+    });
+  }
+
+  const occurrenceMap = new Map<string, number>();
+  for (const tx of parsedTxList) {
+    const baseKey = `${tx.data}|${tx.valor.toFixed(2)}|${normalizeText(tx.titulo + ' ' + tx.descricao)}|BB|CREDIT_CARD`;
+    const occurrence = occurrenceMap.get(baseKey) || 0;
+    occurrenceMap.set(baseKey, occurrence + 1);
+
+    const id = generateDeterministicId(
+      tx.data,
+      tx.valor,
+      tx.titulo,
+      tx.descricao,
+      'BB',
+      'CREDIT_CARD',
+      occurrence,
+    );
+
+    const item: ParsedTransaction = {
+      id,
+      data: tx.data,
+      titulo: tx.titulo,
+      descricao: tx.descricao,
+      valor: tx.valor,
+      banco: 'BB',
+      account_type: 'CREDIT_CARD',
+    };
+    if (tx.parcela_atual && tx.total_parcelas) {
+      item.parcela_atual = tx.parcela_atual;
+      item.total_parcelas = tx.total_parcelas;
+    }
+    transactions.push(item);
+  }
+
+  return { transactions, errors };
+}
+
 export function parseBBCsv(rawContent: string): ParserResult {
+  if (rawContent === '__PDF_NO_TEXT__') {
+    return {
+      transactions: [],
+      errors: [
+        'Este PDF não possui texto selecionável (foi gerado como imagem/vetor). Exporte o extrato em CSV ou TXT.',
+      ],
+    };
+  }
+
   const content = (rawContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const norm = normalizeText(content);
+
+  // Detecta Fatura de Cartão de Crédito BB (Ourocard PDF extraído)
+  if (
+    norm.includes('ourocard') &&
+    norm.includes('lancamentos nesta fatura')
+  ) {
+    return parseBBCreditCardPdfText(content);
+  }
 
   // Detecta Fatura de Cartão de Crédito BB (Ourocard SISBB .txt)
   const isCreditCardTxt =
@@ -473,7 +643,7 @@ export function parseBBCsv(rawContent: string): ParserResult {
   return {
     transactions: [],
     errors: [
-      'Não foi possível identificar o formato do extrato Banco do Brasil (Conta Corrente CSV ou Cartão Ourocard TXT).',
+      'Não foi possível identificar o formato do extrato Banco do Brasil (Conta Corrente CSV ou Cartão Ourocard TXT/PDF).',
     ],
   };
 }

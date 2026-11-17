@@ -36,13 +36,13 @@ const SUPPORTED_BANKS: BankInfo[] = [
   {
     id: 'BRADESCO',
     nome: 'Bradesco',
-    descricao: 'Extrato Bradesco - Conta Corrente ou Cartão de Crédito (CSV)',
+    descricao: 'Extrato Bradesco - Conta Corrente (CSV) ou Cartão de Crédito (CSV / PDF)',
   },
   {
     id: 'BB',
     nome: 'Banco do Brasil',
     descricao:
-      'Extrato Banco do Brasil - Conta Corrente (CSV) ou Cartão Ourocard (TXT)',
+      'Extrato Banco do Brasil - Conta Corrente (CSV) ou Cartão Ourocard (TXT / PDF)',
   },
 ];
 

@@ -11,9 +11,14 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ImportService } from './import.service';
+import { isPdfBuffer, extractPdfText } from '../services/parsers/pdf.extractor';
 
-function decodeCsvBuffer(buffer: Buffer): string {
+function decodeUploadBuffer(buffer: Buffer, banco: string): string {
   if (!buffer || buffer.length === 0) return '';
+  if (isPdfBuffer(buffer)) {
+    const extracted = extractPdfText(buffer, banco);
+    return extracted || '__PDF_NO_TEXT__';
+  }
   try {
     const decoder = new TextDecoder('utf-8', { fatal: true });
     return decoder.decode(buffer);
@@ -42,10 +47,10 @@ export class ImportController {
     @UploadedFile() file: Express.Multer.File,
     @Query('banco') banco: string,
   ) {
-    if (!file) throw new BadRequestException('Arquivo CSV é obrigatório.');
+    if (!file) throw new BadRequestException('Arquivo é obrigatório.');
     if (!banco) throw new BadRequestException('Banco é obrigatório.');
 
-    const csvContent = decodeCsvBuffer(file.buffer);
+    const csvContent = decodeUploadBuffer(file.buffer, banco);
     return this.importService.preview(banco, csvContent);
   }
 
@@ -55,10 +60,10 @@ export class ImportController {
     @UploadedFile() file: Express.Multer.File,
     @Query('banco') banco: string,
   ) {
-    if (!file) throw new BadRequestException('Arquivo CSV é obrigatório.');
+    if (!file) throw new BadRequestException('Arquivo é obrigatório.');
     if (!banco) throw new BadRequestException('Banco é obrigatório.');
 
-    const csvContent = decodeCsvBuffer(file.buffer);
+    const csvContent = decodeUploadBuffer(file.buffer, banco);
     return this.importService.execute(banco, csvContent, file.originalname);
   }
 

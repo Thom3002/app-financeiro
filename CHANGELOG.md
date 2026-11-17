@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Suporte ao Banco do Brasil (Conta Corrente e Cartão Ourocard)**:
   - Novo parser unificado (`bb.parser.ts`) com detecção automática entre Conta Corrente (CSV Layout v1 com `Histórico` e Layout v2 com `Lançamento` + `Detalhes`) e Cartão de Crédito Ourocard (TXT SISBB, faturas fechadas e fatura aberta).
+  - Suporte nativo à importação de faturas de cartão de crédito em **PDF** para Banco do Brasil (`Ourocard`) e Bradesco (`Fatura Mensal`), com extração de texto e coordenadas via `pdf.extractor.ts` (sem dependências externas).
+  - Remoção das referências não suportadas a `.ofx` na tela de importação (`ImportPage.jsx`), atualizada para `CSV / TXT / PDF`.
   - Filtragem automática de linhas de saldo (`Saldo Anterior`, `Saldo do dia`, `S A L D O`), movimentações automáticas `BB Rende Fácil` (doc `9903`) e pagamentos de fatura anterior (`PGTO DEBITO CONTA`).
   - Extração automática de parcelas (`PARC XX/YY` e `001/007`) e normalização de IDs determinísticos entre os Layouts v1 e v2.
 
