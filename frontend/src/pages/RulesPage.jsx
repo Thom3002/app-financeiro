@@ -40,6 +40,17 @@ export default function RulesPage() {
     const [ruleSearch, setRuleSearch] = useState('');
     const [ruleSortBy, setRuleSortBy] = useState('priority'); // 'priority' | 'category'
 
+    const loadRules = async () => {
+        setLoading(true);
+        try {
+            const data = await api.getRules();
+            setRules(data);
+        } catch (e) {
+            console.error(e);
+        }
+        setLoading(false);
+    };
+
     useEffect(() => {
         loadRules();
         api.getCategoriesFlat().then(cats => {
@@ -53,17 +64,6 @@ export default function RulesPage() {
     const getSubcategoryOptions = (catName) => {
         const cat = allCategories.find(c => c.nome === catName);
         return cat?.children || [];
-    };
-
-    const loadRules = async () => {
-        setLoading(true);
-        try {
-            const data = await api.getRules();
-            setRules(data);
-        } catch (e) {
-            console.error(e);
-        }
-        setLoading(false);
     };
 
     const [formError, setFormError] = useState('');
@@ -475,6 +475,8 @@ export default function RulesPage() {
                                 >
                                     <option value="qualquer">Qualquer</option>
                                     <option value="C6">C6</option>
+                                    <option value="BRADESCO">Bradesco</option>
+                                    <option value="BB">Banco do Brasil (BB)</option>
                                 </select>
                             </div>
                             <div className="form-group">

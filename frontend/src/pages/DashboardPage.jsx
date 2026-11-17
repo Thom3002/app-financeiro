@@ -171,23 +171,6 @@ export default function DashboardPage() {
         is_custo_fixo: false,
     });
 
-    useEffect(() => {
-        const refreshAll = () => {
-            loadDashboardData();
-            loadTransactions();
-            api.getCategoriesFlat().then(cats => {
-                setAllCategories(cats.filter(c => !c.parent_id));
-            }).catch(() => { });
-        };
-
-        refreshAll();
-
-        window.addEventListener('unclassified-count-changed', refreshAll);
-        return () => {
-            window.removeEventListener('unclassified-count-changed', refreshAll);
-        };
-    }, [loadDashboardData, loadTransactions]);
-
     const getSubcategoryOptions = (catName) => {
         const cat = allCategories.find(c => c.nome === catName);
         return cat?.children || [];
@@ -201,26 +184,6 @@ export default function DashboardPage() {
             ignorar_dashboard: !!tx.ignorar_dashboard,
             is_custo_fixo: !!tx.is_custo_fixo,
         });
-    };
-
-    const saveEdit = async () => {
-        if (!editingTx) return;
-        const scrollY = window.scrollY;
-        try {
-            await api.updateTransactionCategory(editingTx.id, {
-                categoria: editValues.categoria || null,
-                subcategoria: editValues.subcategoria || null,
-                ignorar_dashboard: editValues.ignorar_dashboard,
-                is_custo_fixo: editValues.is_custo_fixo,
-                is_manual: true,
-            });
-            setEditingTx(null);
-            await Promise.all([loadDashboardData(), loadTransactions()]);
-            window.dispatchEvent(new Event('unclassified-count-changed'));
-            requestAnimationFrame(() => window.scrollTo(0, scrollY));
-        } catch (e) {
-            alert('Erro ao salvar transação: ' + e.message);
-        }
     };
 
     // Estados da Tabela de Transações abaixo dos gráficos
@@ -259,20 +222,6 @@ export default function DashboardPage() {
         setLoadingSummary(false);
     }, [dateFilters, selectedCategories]);
 
-    useEffect(() => {
-        loadDashboardData();
-    }, [loadDashboardData]);
-
-    // Ouvir atualizações de classificação e recarregar o dashboard em tempo real
-    useEffect(() => {
-        const handleUpdate = () => {
-            loadDashboardData();
-            api.getDistinctCategories().then(setCategoriesList).catch(() => {});
-        };
-        window.addEventListener('unclassified-count-changed', handleUpdate);
-        return () => window.removeEventListener('unclassified-count-changed', handleUpdate);
-    }, [loadDashboardData]);
-
     // Carrega Tabela de Transações (com base no período e filtros específicos da tabela)
     const loadTransactions = useCallback(async () => {
         setTxLoading(true);
@@ -294,8 +243,53 @@ export default function DashboardPage() {
     }, [dateFilters, txFilters, selectedCategories]);
 
     useEffect(() => {
+        loadDashboardData();
+    }, [loadDashboardData]);
+
+    useEffect(() => {
         loadTransactions();
     }, [loadTransactions]);
+
+    // Ouvir atualizações de classificação e recarregar o dashboard em tempo real
+    useEffect(() => {
+        const refreshAll = () => {
+            loadDashboardData();
+            loadTransactions();
+            api.getDistinctCategories().then(setCategoriesList).catch(() => {});
+            api.getCategoriesFlat().then(cats => {
+                setAllCategories(cats.filter(c => !c.parent_id));
+            }).catch(() => {});
+        };
+
+        api.getCategoriesFlat().then(cats => {
+            setAllCategories(cats.filter(c => !c.parent_id));
+        }).catch(() => {});
+
+        window.addEventListener('unclassified-count-changed', refreshAll);
+        return () => {
+            window.removeEventListener('unclassified-count-changed', refreshAll);
+        };
+    }, [loadDashboardData, loadTransactions]);
+
+    const saveEdit = async () => {
+        if (!editingTx) return;
+        const scrollY = window.scrollY;
+        try {
+            await api.updateTransactionCategory(editingTx.id, {
+                categoria: editValues.categoria || null,
+                subcategoria: editValues.subcategoria || null,
+                ignorar_dashboard: editValues.ignorar_dashboard,
+                is_custo_fixo: editValues.is_custo_fixo,
+                is_manual: true,
+            });
+            setEditingTx(null);
+            await Promise.all([loadDashboardData(), loadTransactions()]);
+            window.dispatchEvent(new Event('unclassified-count-changed'));
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
+        } catch (e) {
+            alert('Erro ao salvar transação: ' + e.message);
+        }
+    };
 
     // Handlers para botões de atalho de período
     const applyPeriodPreset = (presetName, datesFn) => {
@@ -926,7 +920,15 @@ export default function DashboardPage() {
             {/* Modal de Edição / Classificação na Carteira */}
             {editingTx && (() => {
                 const fullText = ((editingTx.titulo || '') + ' ' + (editingTx.descricao || '')).toUpperCase();
-                const isFatura = fullText.includes('FATURA') || fullText.includes('PAGTO FATURA') || fullText.includes('PAGAMENTO FATURA');
+                const isFatura =
+                    fullText.includes('FATURA') ||
+                    fullText.includes('PAGTO FATURA') ||
+                    fullText.includes('PAGAMENTO FATURA') ||
+                    fullText.includes('GASTO C CREDITO') ||
+                    fullText.includes('GASTOS CARTAO DE CREDITO') ||
+                    fullText.includes('PAGTO CARTAO CREDITO') ||
+                    fullText.includes('PAGTO CARTÃO CRÉDITO') ||
+                    fullText.includes('PAGTO ANTECIPADO');
                 const isUnclassified = !editingTx.categoria || editingTx.categoria === 'Não classificado';
 
                 return (

@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - Inferência precisa do mês/ano de fechamento em faturas de Cartão Bradesco (`SALDO ANTERIOR` + número da parcela `X/Y`) e exclusão de `PAGTO. POR DEB EM C/C` para evitar receitas fantasmas.
   - Agrupamento inteligente na aba **Classificar** (`ClassificationService.getSuggestions`) priorizando o favorecido/fornecedor (`descricao`) na Conta Corrente e o estabelecimento (`titulo`) no Cartão de Crédito.
   - Correção da flag `source = 'CSV'`, badge `"Crédito"` para `CREDIT_CARD`, detecção do banner de pagamento de fatura (`Gasto c Credito` / `Pagto cartão crédito`) e abertura automática da aba CSV quando o Pluggy está desativado.
+  - Corrigido erro crítico de tela azul na inicialização do build de produção (`ReferenceError: Cannot access 'q' before initialization` em `DashboardPage.jsx`) causado pela referência a `loadDashboardData` e `loadTransactions` no array de dependências do `useEffect` antes de suas declarações `const`.
 
 ## [1.1.11] - 2026-08-09
 
